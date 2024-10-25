@@ -1,9 +1,11 @@
 use crate::{request::TransactionRequest, BlockId, BlockOverrides};
+use alloy_primitives::Bytes;
+
 use alloc::{
+    format,
     string::{String, ToString},
     vec::Vec,
 };
-use alloy_primitives::Bytes;
 
 /// Bundle of transactions
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -131,7 +133,6 @@ impl<'de> serde::Deserialize<'de> for TransactionIndex {
 mod tests {
     use super::*;
     use crate::BlockNumberOrTag;
-    use similar_asserts::assert_eq;
 
     #[test]
     #[cfg(feature = "serde")]

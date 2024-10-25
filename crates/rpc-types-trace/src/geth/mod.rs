@@ -1,16 +1,14 @@
 //! Geth tracing types.
 
-use crate::geth::{
-    call::FlatCallFrame,
-    mux::{MuxConfig, MuxFrame},
-};
+use crate::geth::mux::{MuxConfig, MuxFrame};
 use alloy_primitives::{Bytes, B256, U256};
 use alloy_rpc_types_eth::{state::StateOverride, BlockOverrides};
 use serde::{de::DeserializeOwned, ser::SerializeMap, Deserialize, Serialize, Serializer};
 use std::{collections::BTreeMap, time::Duration};
+
 // re-exports
 pub use self::{
-    call::{CallConfig, CallFrame, CallLogFrame, FlatCallConfig},
+    call::{CallConfig, CallFrame, CallLogFrame},
     four_byte::FourByteFrame,
     noop::NoopFrame,
     pre_state::{
@@ -120,8 +118,6 @@ pub enum GethTrace {
     Default(DefaultFrame),
     /// The response for call tracer
     CallTracer(CallFrame),
-    /// The response for the flat call tracer
-    FlatCallTracer(FlatCallFrame),
     /// The response for four byte tracer
     FourByteTracer(FourByteFrame),
     /// The response for pre-state byte tracer
@@ -147,14 +143,6 @@ impl GethTrace {
     pub fn try_into_call_frame(self) -> Result<CallFrame, UnexpectedTracerError> {
         match self {
             Self::CallTracer(inner) => Ok(inner),
-            _ => Err(UnexpectedTracerError(self)),
-        }
-    }
-
-    /// Try to convert the inner tracer to [FlatCallFrame]
-    pub fn try_into_flat_call_frame(self) -> Result<FlatCallFrame, UnexpectedTracerError> {
-        match self {
-            Self::FlatCallTracer(inner) => Ok(inner),
             _ => Err(UnexpectedTracerError(self)),
         }
     }
@@ -224,12 +212,6 @@ impl From<CallFrame> for GethTrace {
     }
 }
 
-impl From<FlatCallFrame> for GethTrace {
-    fn from(value: FlatCallFrame) -> Self {
-        Self::FlatCallTracer(value)
-    }
-}
-
 impl From<PreStateFrame> for GethTrace {
     fn from(value: PreStateFrame) -> Self {
         Self::PreStateTracer(value)
@@ -264,22 +246,14 @@ pub enum GethDebugBuiltInTracerType {
     /// with the top-level call at root and sub-calls as children of the higher levels.
     #[serde(rename = "callTracer")]
     CallTracer,
-    /// Tracks all call frames of a transaction and returns them in a flat format, i.e. as opposed
-    /// to the nested format of `callTracer`.
-    #[serde(rename = "flatCallTracer")]
-    FlatCallTracer,
-    /// The prestate tracer operates in two distinct modes: prestate and diff.
-    /// - In prestate mode, it retrieves the accounts required for executing a specified
-    ///   transaction.
-    /// - In diff mode, it identifies the changes between the transaction's initial and final
-    ///   states, detailing the modifications caused by the transaction.
-    ///
-    /// By default, the prestateTracer is set to prestate mode. It reexecutes the given transaction
-    /// and tracks every part of state that is accessed.
-    ///
-    /// This functionality is akin to a stateless witness, with the key distinction that this
-    /// tracer does not provide any cryptographic proofs; it only returns the trie leaves.
-    /// The output is an object where the keys correspond to account addresses.
+    /// The prestate tracer has two modes: prestate and diff. The prestate mode returns the
+    /// accounts necessary to execute a given transaction. diff mode returns the differences
+    /// between the transaction's pre and post-state (i.e. what changed because the transaction
+    /// happened). The prestateTracer defaults to prestate mode. It reexecutes the given
+    /// transaction and tracks every part of state that is touched. This is similar to the concept
+    /// of a stateless witness, the difference being this tracer doesn't return any cryptographic
+    /// proof, rather only the trie leaves. The result is an object. The keys are addresses of
+    /// accounts.
     #[serde(rename = "prestateTracer")]
     PreStateTracer,
     /// This tracer is noop. It returns an empty object and is only meant for testing the setup.
@@ -337,14 +311,6 @@ impl GethDebugTracerConfig {
         self.from_value()
     }
 
-    /// Returns the [FlatCallConfig] if it is a call config.
-    pub fn into_flat_call_config(self) -> Result<FlatCallConfig, serde_json::Error> {
-        if self.0.is_null() {
-            return Ok(Default::default());
-        }
-        self.from_value()
-    }
-
     /// Returns the raw json value
     pub fn into_json(self) -> serde_json::Value {
         self.0
@@ -375,11 +341,6 @@ impl From<serde_json::Value> for GethDebugTracerConfig {
 
 impl From<CallConfig> for GethDebugTracerConfig {
     fn from(value: CallConfig) -> Self {
-        Self(serde_json::to_value(value).expect("is serializable"))
-    }
-}
-impl From<FlatCallConfig> for GethDebugTracerConfig {
-    fn from(value: FlatCallConfig) -> Self {
         Self(serde_json::to_value(value).expect("is serializable"))
     }
 }
@@ -427,45 +388,10 @@ pub struct GethDebugTracingOptions {
 }
 
 impl GethDebugTracingOptions {
-    /// Creates a new instance with given [`GethDebugTracerType`] configured
-    pub fn new_tracer(tracer: impl Into<GethDebugTracerType>) -> Self {
-        Self::default().with_tracer(tracer.into())
-    }
-
     /// Sets the tracer to use
     pub fn with_tracer(mut self, tracer: GethDebugTracerType) -> Self {
         self.tracer = Some(tracer);
         self
-    }
-
-    /// Creates new Options for [`GethDebugBuiltInTracerType::CallTracer`].
-    pub fn call_tracer(config: CallConfig) -> Self {
-        Self::new_tracer(GethDebugBuiltInTracerType::CallTracer).with_call_config(config)
-    }
-
-    /// Creates new Options for [`GethDebugBuiltInTracerType::FlatCallTracer`].
-    pub fn flat_call_tracer(config: FlatCallConfig) -> Self {
-        Self::new_tracer(GethDebugBuiltInTracerType::FlatCallTracer).with_config(config)
-    }
-
-    /// Creates new Options for [`GethDebugBuiltInTracerType::MuxTracer`].
-    pub fn mux_tracer(config: MuxConfig) -> Self {
-        Self::new_tracer(GethDebugBuiltInTracerType::MuxTracer).with_config(config)
-    }
-
-    /// Creates new options for [`GethDebugBuiltInTracerType::PreStateTracer`]
-    pub fn prestate_tracer(config: PreStateConfig) -> Self {
-        Self::new_tracer(GethDebugBuiltInTracerType::PreStateTracer).with_prestate_config(config)
-    }
-
-    /// Creates new options for [`GethDebugBuiltInTracerType::FourByteTracer`]
-    pub fn four_byte_tracer() -> Self {
-        Self::new_tracer(GethDebugBuiltInTracerType::FourByteTracer)
-    }
-
-    /// Creates an [`GethDebugTracerType::JsTracer`] with the given js code.
-    pub fn js_tracer(code: impl Into<String>) -> Self {
-        Self::new_tracer(GethDebugTracerType::JsTracer(code.into()))
     }
 
     /// Sets the timeout to use for tracing
@@ -696,7 +622,7 @@ fn serialize_string_storage_map_opt<S: Serializer>(
         None => s.serialize_none(),
         Some(storage) => {
             let mut m = s.serialize_map(Some(storage.len()))?;
-            for (key, val) in storage {
+            for (key, val) in storage.iter() {
                 let key = format!("{:?}", key);
                 let val = format!("{:?}", val);
                 // skip the 0x prefix
@@ -710,7 +636,6 @@ fn serialize_string_storage_map_opt<S: Serializer>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use similar_asserts::assert_eq;
 
     #[test]
     fn test_tracer_config() {
@@ -769,7 +694,7 @@ mod tests {
         let log: StructLog = serde_json::from_str(s).unwrap();
         let val = serde_json::to_value(&log).unwrap();
         let input = serde_json::from_str::<serde_json::Value>(s).unwrap();
-        assert_eq!(input, val);
+        similar_asserts::assert_eq!(input, val);
     }
 
     #[test]
@@ -797,7 +722,7 @@ mod tests {
 
         let de = serde_json::to_value(&result).unwrap();
         let val = serde_json::from_str::<serde_json::Value>(s).unwrap();
-        assert_eq!(val, de);
+        similar_asserts::assert_eq!(val, de);
     }
 
     #[test]

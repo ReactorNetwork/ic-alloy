@@ -6,6 +6,7 @@ use alloy_network_primitives::{
     BlockResponse, BlockTransactions, HeaderResponse, TransactionResponse,
 };
 use alloy_primitives::{Address, BlockHash, Bloom, Bytes, B256, B64, U256};
+use alloy_serde::WithOtherFields;
 
 use alloc::vec::Vec;
 
@@ -80,10 +81,10 @@ pub struct Header {
     pub number: u64,
     /// Gas Limit
     #[cfg_attr(feature = "serde", serde(default, with = "alloy_serde::quantity"))]
-    pub gas_limit: u64,
+    pub gas_limit: u128,
     /// Gas Used
     #[cfg_attr(feature = "serde", serde(default, with = "alloy_serde::quantity"))]
-    pub gas_used: u64,
+    pub gas_used: u128,
     /// Timestamp
     #[cfg_attr(feature = "serde", serde(default, with = "alloy_serde::quantity"))]
     pub timestamp: u64,
@@ -117,7 +118,7 @@ pub struct Header {
             with = "alloy_serde::quantity::opt"
         )
     )]
-    pub base_fee_per_gas: Option<u64>,
+    pub base_fee_per_gas: Option<u128>,
     /// Withdrawals root hash added by EIP-4895 and is ignored in legacy headers.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub withdrawals_root: Option<B256>,
@@ -130,7 +131,7 @@ pub struct Header {
             with = "alloy_serde::quantity::opt"
         )
     )]
-    pub blob_gas_used: Option<u64>,
+    pub blob_gas_used: Option<u128>,
     /// Excess blob gas
     #[cfg_attr(
         feature = "serde",
@@ -140,13 +141,13 @@ pub struct Header {
             with = "alloy_serde::quantity::opt"
         )
     )]
-    pub excess_blob_gas: Option<u64>,
+    pub excess_blob_gas: Option<u128>,
     /// EIP-4788 parent beacon block root
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub parent_beacon_block_root: Option<B256>,
-    /// EIP-7685 requests hash.
+    /// EIP-7685 requests root.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
-    pub requests_hash: Option<B256>,
+    pub requests_root: Option<B256>,
 }
 
 impl Header {
@@ -170,7 +171,7 @@ impl Header {
     /// spec.
     ///
     /// Returns a `None` if no excess blob gas is set, no EIP-4844 support
-    pub fn next_block_excess_blob_gas(&self) -> Option<u64> {
+    pub fn next_block_excess_blob_gas(&self) -> Option<u128> {
         Some(calc_excess_blob_gas(self.excess_blob_gas?, self.blob_gas_used?))
     }
 }
@@ -199,7 +200,7 @@ impl TryFrom<Header> for alloy_consensus::Header {
             blob_gas_used,
             excess_blob_gas,
             parent_beacon_block_root,
-            requests_hash,
+            requests_root,
             // not included in the consensus header
             hash: _hash,
             total_difficulty: _total_difficulty,
@@ -224,7 +225,7 @@ impl TryFrom<Header> for alloy_consensus::Header {
             blob_gas_used,
             excess_blob_gas,
             parent_beacon_block_root,
-            requests_hash,
+            requests_root,
             extra_data,
         })
     }
@@ -247,7 +248,7 @@ impl HeaderResponse for Header {
         &self.extra_data
     }
 
-    fn base_fee_per_gas(&self) -> Option<u64> {
+    fn base_fee_per_gas(&self) -> Option<u128> {
         self.base_fee_per_gas
     }
 
@@ -259,7 +260,7 @@ impl HeaderResponse for Header {
         self.miner
     }
 
-    fn gas_limit(&self) -> u64 {
+    fn gas_limit(&self) -> u128 {
         self.gas_limit
     }
 
@@ -293,15 +294,13 @@ impl std::error::Error for BlockError {
     }
 }
 
-#[cfg(feature = "serde")]
-impl From<Block> for alloy_serde::WithOtherFields<Block> {
+impl From<Block> for WithOtherFields<Block> {
     fn from(inner: Block) -> Self {
         Self { inner, other: Default::default() }
     }
 }
 
-#[cfg(feature = "serde")]
-impl From<Header> for alloy_serde::WithOtherFields<Header> {
+impl From<Header> for WithOtherFields<Header> {
     fn from(inner: Header) -> Self {
         Self { inner, other: Default::default() }
     }
@@ -365,15 +364,15 @@ pub struct BlockOverrides {
         serde(default, skip_serializing_if = "Option::is_none", alias = "baseFeePerGas")
     )]
     pub base_fee: Option<U256>,
-    /// A dictionary that maps blockNumber to a user-defined hash. It can be queried from the
-    /// EVM opcode BLOCKHASH.
+    /// A dictionary that maps blockNumber to a user-defined hash. It could be queried from the
+    /// solidity opcode BLOCKHASH.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub block_hash: Option<BTreeMap<u64, B256>>,
 }
 
-impl<T: TransactionResponse, H: HeaderResponse> BlockResponse for Block<T, H> {
-    type Header = H;
+impl<T, H> BlockResponse for Block<T, H> {
     type Transaction = T;
+    type Header = H;
 
     fn header(&self) -> &Self::Header {
         &self.header
@@ -393,7 +392,6 @@ mod tests {
     use alloy_primitives::keccak256;
     use arbitrary::Arbitrary;
     use rand::Rng;
-    use similar_asserts::assert_eq;
 
     use super::*;
 
@@ -442,7 +440,7 @@ mod tests {
                 blob_gas_used: None,
                 excess_blob_gas: None,
                 parent_beacon_block_root: None,
-                requests_hash: None,
+                requests_root: None,
             },
             uncles: vec![B256::with_last_byte(17)],
             transactions: vec![B256::with_last_byte(18)].into(),
@@ -485,7 +483,7 @@ mod tests {
                 blob_gas_used: None,
                 excess_blob_gas: None,
                 parent_beacon_block_root: None,
-                requests_hash: None,
+                requests_root: None,
             },
             uncles: vec![],
             transactions: BlockTransactions::Uncle,
@@ -528,7 +526,7 @@ mod tests {
                 blob_gas_used: None,
                 excess_blob_gas: None,
                 parent_beacon_block_root: None,
-                requests_hash: None,
+                requests_root: None,
             },
             uncles: vec![B256::with_last_byte(17)],
             transactions: vec![B256::with_last_byte(18)].into(),
@@ -579,10 +577,9 @@ mod tests {
     "size": "0xaeb6"
 }"#;
 
-        let block = serde_json::from_str::<alloy_serde::WithOtherFields<Block>>(s).unwrap();
+        let block = serde_json::from_str::<WithOtherFields<Block>>(s).unwrap();
         let serialized = serde_json::to_string(&block).unwrap();
-        let block2 =
-            serde_json::from_str::<alloy_serde::WithOtherFields<Block>>(&serialized).unwrap();
+        let block2 = serde_json::from_str::<WithOtherFields<Block>>(&serialized).unwrap();
         assert_eq!(block, block2);
     }
 

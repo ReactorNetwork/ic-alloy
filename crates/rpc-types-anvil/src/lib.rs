@@ -167,7 +167,6 @@ impl Default for MineOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use similar_asserts::assert_eq;
 
     #[test]
     fn test_serde_forking_deserialization() {

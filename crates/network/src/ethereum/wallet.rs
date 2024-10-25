@@ -1,14 +1,14 @@
 use crate::{Network, NetworkWallet, TxSigner};
 use alloy_consensus::{SignableTransaction, TxEnvelope, TypedTransaction};
-use alloy_primitives::{map::AddressHashMap, Address};
+use alloy_primitives::Address;
 use alloy_signer::Signature;
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 /// A wallet capable of signing any transaction for the Ethereum network.
 #[derive(Clone, Default)]
 pub struct EthereumWallet {
     default: Address,
-    signers: AddressHashMap<Arc<dyn TxSigner<Signature> + Send + Sync>>,
+    signers: BTreeMap<Address, Arc<dyn TxSigner<Signature> + Send + Sync>>,
 }
 
 impl std::fmt::Debug for EthereumWallet {

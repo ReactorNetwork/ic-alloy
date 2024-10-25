@@ -21,6 +21,11 @@ pub use self::bool::*;
 mod optional;
 pub use self::optional::*;
 
+#[cfg_attr(not(test), deprecated = "use `quantity::{self, opt, vec}` instead")]
+pub mod num;
+#[allow(deprecated)]
+pub use num::*;
+
 pub mod quantity;
 
 /// Storage related helpers.

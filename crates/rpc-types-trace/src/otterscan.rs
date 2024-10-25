@@ -21,8 +21,6 @@ pub enum OperationType {
     OpCreate = 2,
     /// Operation Create2
     OpCreate2 = 3,
-    /// Operation EofCreate
-    OpEofCreate = 4,
 }
 
 // Implement Serialize for OperationType
@@ -48,7 +46,6 @@ impl<'de> Deserialize<'de> for OperationType {
             1 => Ok(Self::OpSelfDestruct),
             2 => Ok(Self::OpCreate),
             3 => Ok(Self::OpCreate2),
-            4 => Ok(Self::OpEofCreate),
             other => Err(de::Error::invalid_value(
                 Unexpected::Unsigned(other as u64),
                 &"a valid OperationType",
@@ -255,7 +252,6 @@ pub struct ContractCreator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use similar_asserts::assert_eq;
 
     #[test]
     fn test_otterscan_receipt() {

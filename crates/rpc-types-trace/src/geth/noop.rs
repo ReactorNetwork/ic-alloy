@@ -13,7 +13,6 @@ pub struct NoopFrame(BTreeMap<(), ()>);
 mod tests {
     use super::*;
     use crate::geth::*;
-    use similar_asserts::assert_eq;
 
     const DEFAULT: &str = r"{}";
 

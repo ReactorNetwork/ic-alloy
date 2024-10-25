@@ -171,7 +171,6 @@ impl<'a> serde::Deserialize<'a> for Params {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use similar_asserts::assert_eq;
 
     #[test]
     #[cfg(feature = "serde")]

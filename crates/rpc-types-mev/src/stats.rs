@@ -131,7 +131,6 @@ pub struct UserStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use similar_asserts::assert_eq;
 
     use crate::SealedByBuildersAt;
 

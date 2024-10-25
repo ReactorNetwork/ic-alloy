@@ -68,7 +68,7 @@ pub struct FeeHistory {
         serde(
             default,
             skip_serializing_if = "Option::is_none",
-            with = "alloy_serde::quantity::u128_vec_vec_opt"
+            with = "alloy_serde::u128_vec_vec_opt_via_ruint"
         )
     )]
     pub reward: Option<Vec<Vec<u128>>>,

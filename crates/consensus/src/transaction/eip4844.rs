@@ -2,7 +2,7 @@ use crate::{EncodableSignature, SignableTransaction, Signed, Transaction, TxType
 
 use alloc::vec::Vec;
 use alloy_eips::{eip2930::AccessList, eip4844::DATA_GAS_PER_BLOB, eip7702::SignedAuthorization};
-use alloy_primitives::{keccak256, Address, Bytes, ChainId, Parity, Signature, TxKind, B256, U256};
+use alloy_primitives::{keccak256, Address, Bytes, ChainId, Signature, TxKind, B256, U256};
 use alloy_rlp::{length_of_length, BufMut, Decodable, Encodable, Header};
 use core::mem;
 
@@ -74,15 +74,6 @@ impl From<(TxEip4844, BlobTransactionSidecar)> for TxEip4844Variant {
     }
 }
 
-impl From<TxEip4844Variant> for TxEip4844 {
-    fn from(tx: TxEip4844Variant) -> Self {
-        match tx {
-            TxEip4844Variant::TxEip4844(tx) => tx,
-            TxEip4844Variant::TxEip4844WithSidecar(tx) => tx.tx,
-        }
-    }
-}
-
 impl TxEip4844Variant {
     /// Verifies that the transaction's blob data, commitments, and proofs are all valid.
     ///
@@ -138,7 +129,7 @@ impl TxEip4844Variant {
             Self::TxEip4844WithSidecar(tx) => {
                 let payload_length = tx.tx().fields_len() + signature.rlp_vrs_len();
                 let inner_header = Header { list: true, payload_length };
-                inner_header.length() + payload_length + tx.sidecar().rlp_encoded_fields_length()
+                inner_header.length() + payload_length + tx.sidecar().fields_len()
             }
         };
 
@@ -212,7 +203,7 @@ impl Transaction for TxEip4844Variant {
         }
     }
 
-    fn gas_limit(&self) -> u64 {
+    fn gas_limit(&self) -> u128 {
         match self {
             Self::TxEip4844(tx) => tx.gas_limit,
             Self::TxEip4844WithSidecar(tx) => tx.tx().gas_limit,
@@ -237,13 +228,6 @@ impl Transaction for TxEip4844Variant {
         }
     }
 
-    fn max_fee_per_blob_gas(&self) -> Option<u128> {
-        match self {
-            Self::TxEip4844(tx) => tx.max_fee_per_blob_gas(),
-            Self::TxEip4844WithSidecar(tx) => tx.max_fee_per_blob_gas(),
-        }
-    }
-
     fn priority_fee_or_price(&self) -> u128 {
         match self {
             Self::TxEip4844(tx) => tx.priority_fee_or_price(),
@@ -251,7 +235,14 @@ impl Transaction for TxEip4844Variant {
         }
     }
 
-    fn kind(&self) -> TxKind {
+    fn max_fee_per_blob_gas(&self) -> Option<u128> {
+        match self {
+            Self::TxEip4844(tx) => tx.max_fee_per_blob_gas(),
+            Self::TxEip4844WithSidecar(tx) => tx.max_fee_per_blob_gas(),
+        }
+    }
+
+    fn to(&self) -> TxKind {
         match self {
             Self::TxEip4844(tx) => tx.to,
             Self::TxEip4844WithSidecar(tx) => tx.tx.to,
@@ -266,10 +257,10 @@ impl Transaction for TxEip4844Variant {
         }
     }
 
-    fn input(&self) -> &Bytes {
+    fn input(&self) -> &[u8] {
         match self {
-            Self::TxEip4844(tx) => tx.input(),
-            Self::TxEip4844WithSidecar(tx) => tx.tx().input(),
+            Self::TxEip4844(tx) => tx.input.as_ref(),
+            Self::TxEip4844WithSidecar(tx) => tx.tx().input.as_ref(),
         }
     }
 
@@ -359,8 +350,8 @@ pub struct TxEip4844 {
     /// this transaction. This is paid up-front, before any
     /// computation is done and may not be increased
     /// later; formally Tg.
-    #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity", rename = "gas"))]
-    pub gas_limit: u64,
+    #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
+    pub gas_limit: u128,
     /// A scalar value equal to the maximum
     /// amount of gas that should be used in executing
     /// this transaction. This is paid up-front, before any
@@ -624,10 +615,6 @@ impl TxEip4844 {
         let tx = Self::decode_fields(buf)?;
         let signature = Signature::decode_rlp_vrs(buf)?;
 
-        if !matches!(signature.v(), Parity::Parity(_)) {
-            return Err(alloy_rlp::Error::Custom("invalid parity for typed transaction"));
-        }
-
         let signed = tx.into_signed(signature);
         if buf.len() + header.payload_length != original_len {
             return Err(alloy_rlp::Error::ListLengthMismatch {
@@ -702,7 +689,7 @@ impl Transaction for TxEip4844 {
         self.nonce
     }
 
-    fn gas_limit(&self) -> u64 {
+    fn gas_limit(&self) -> u128 {
         self.gas_limit
     }
 
@@ -718,15 +705,15 @@ impl Transaction for TxEip4844 {
         Some(self.max_priority_fee_per_gas)
     }
 
-    fn max_fee_per_blob_gas(&self) -> Option<u128> {
-        Some(self.max_fee_per_blob_gas)
-    }
-
     fn priority_fee_or_price(&self) -> u128 {
         self.max_priority_fee_per_gas
     }
 
-    fn kind(&self) -> TxKind {
+    fn max_fee_per_blob_gas(&self) -> Option<u128> {
+        Some(self.max_fee_per_blob_gas)
+    }
+
+    fn to(&self) -> TxKind {
         self.to.into()
     }
 
@@ -734,7 +721,7 @@ impl Transaction for TxEip4844 {
         self.value
     }
 
-    fn input(&self) -> &Bytes {
+    fn input(&self) -> &[u8] {
         &self.input
     }
 
@@ -875,7 +862,7 @@ impl TxEip4844WithSidecar {
         let inner_header = Header { list: true, payload_length: inner_payload_length };
 
         let outer_payload_length =
-            inner_header.length() + inner_payload_length + self.sidecar.rlp_encoded_fields_length();
+            inner_header.length() + inner_payload_length + self.sidecar.fields_len();
         let outer_header = Header { list: true, payload_length: outer_payload_length };
 
         // write the two headers
@@ -885,7 +872,7 @@ impl TxEip4844WithSidecar {
         // now write the fields
         self.tx.encode_fields(out);
         signature.write_rlp_vrs(out);
-        self.sidecar.rlp_encode_fields(out);
+        self.sidecar.encode(out);
     }
 
     /// Decodes the transaction from RLP bytes, including the signature.
@@ -910,7 +897,7 @@ impl TxEip4844WithSidecar {
         let inner_tx = TxEip4844::decode_signed_fields(buf)?;
 
         // decode the sidecar
-        let sidecar = BlobTransactionSidecar::rlp_decode_fields(buf)?;
+        let sidecar = BlobTransactionSidecar::decode(buf)?;
 
         if buf.len() + header.payload_length != original_len {
             return Err(alloy_rlp::Error::ListLengthMismatch {
@@ -975,7 +962,7 @@ impl Transaction for TxEip4844WithSidecar {
         self.tx.nonce()
     }
 
-    fn gas_limit(&self) -> u64 {
+    fn gas_limit(&self) -> u128 {
         self.tx.gas_limit()
     }
 
@@ -991,23 +978,23 @@ impl Transaction for TxEip4844WithSidecar {
         self.tx.max_priority_fee_per_gas()
     }
 
-    fn max_fee_per_blob_gas(&self) -> Option<u128> {
-        self.tx.max_fee_per_blob_gas()
-    }
-
     fn priority_fee_or_price(&self) -> u128 {
         self.tx.priority_fee_or_price()
     }
 
-    fn kind(&self) -> TxKind {
-        self.tx.kind()
+    fn max_fee_per_blob_gas(&self) -> Option<u128> {
+        self.tx.max_fee_per_blob_gas()
+    }
+
+    fn to(&self) -> TxKind {
+        self.tx.to()
     }
 
     fn value(&self) -> U256 {
         self.tx.value()
     }
 
-    fn input(&self) -> &Bytes {
+    fn input(&self) -> &[u8] {
         self.tx.input()
     }
 
@@ -1082,10 +1069,9 @@ mod tests {
         let actual_envelope: TxEnvelope = actual_signed.into();
 
         // now encode the transaction and check the length
-        let len = expected_envelope.length();
-        let mut buf = Vec::with_capacity(len);
+        let mut buf = Vec::new();
         expected_envelope.encode(&mut buf);
-        assert_eq!(buf.len(), len);
+        assert_eq!(buf.len(), expected_envelope.length());
 
         // ensure it's also the same size that `actual` claims to be, since we just changed the
         // sidecar values.

@@ -1,14 +1,12 @@
 //! Client identification: <https://github.com/ethereum/execution-apis/blob/main/src/engine/identification.md>
 
-use alloc::string::String;
+use alloc::string::{String, ToString};
+use core::str::FromStr;
 
 /// This enum defines a standard for specifying a client with just two letters. Clients teams which
 /// have a code reserved in this list MUST use this code when identifying themselves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
-#[derive(strum::IntoStaticStr)] // Into<&'static str>, AsRef<str>, fmt::Display and serde::Serialize
-#[derive(strum::EnumString)] // FromStr, TryFrom<&str>
-#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClientCode {
     /// Besu
     BU,
@@ -28,8 +26,6 @@ pub enum ClientCode {
     NM,
     /// Nimbus
     NB,
-    /// Trin Execution
-    TE,
     /// Teku
     TK,
     /// Prysm
@@ -40,8 +36,21 @@ pub enum ClientCode {
 
 impl ClientCode {
     /// Returns the client identifier as str.
-    pub fn as_str(&self) -> &'static str {
-        (*self).into()
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::BU => "BU",
+            Self::EJ => "EJ",
+            Self::EG => "EG",
+            Self::GE => "GE",
+            Self::GR => "GR",
+            Self::LH => "LH",
+            Self::LS => "LS",
+            Self::NM => "NM",
+            Self::NB => "NB",
+            Self::TK => "TK",
+            Self::PM => "PM",
+            Self::RH => "RH",
+        }
     }
 
     /// Returns the human readable client name for the given code.
@@ -56,7 +65,6 @@ impl ClientCode {
             Self::LS => "Lodestar",
             Self::NM => "Nethermind",
             Self::NB => "Nimbus",
-            Self::TE => "Trin Execution",
             Self::TK => "Teku",
             Self::PM => "Prysm",
             Self::RH => "Reth",
@@ -64,16 +72,31 @@ impl ClientCode {
     }
 }
 
-#[cfg(feature = "serde")]
-impl serde::Serialize for ClientCode {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(self.as_str())
+impl FromStr for ClientCode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "BU" => Ok(Self::BU),
+            "EJ" => Ok(Self::EJ),
+            "EG" => Ok(Self::EG),
+            "GE" => Ok(Self::GE),
+            "GR" => Ok(Self::GR),
+            "LH" => Ok(Self::LH),
+            "LS" => Ok(Self::LS),
+            "NM" => Ok(Self::NM),
+            "NB" => Ok(Self::NB),
+            "TK" => Ok(Self::TK),
+            "PM" => Ok(Self::PM),
+            "RH" => Ok(Self::RH),
+            s => Err(s.to_string()),
+        }
     }
 }
 
 impl core::fmt::Display for ClientCode {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.as_str().fmt(f)
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -96,7 +119,6 @@ pub struct ClientVersionV1 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use similar_asserts::assert_eq;
 
     #[test]
     #[cfg(feature = "serde")]

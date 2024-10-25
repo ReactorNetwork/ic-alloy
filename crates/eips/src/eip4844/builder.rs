@@ -2,10 +2,12 @@ use crate::eip4844::Blob;
 #[cfg(feature = "kzg")]
 use c_kzg::{KzgCommitment, KzgProof};
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::eip4844::{
     utils::WholeFe, BYTES_PER_BLOB, FIELD_ELEMENTS_PER_BLOB, MAX_BLOBS_PER_BLOCK,
 };
-use alloc::vec::Vec;
 
 #[cfg(feature = "kzg")]
 use crate::eip4844::env_settings::EnvKzgSettings;
@@ -362,7 +364,7 @@ impl<T: SidecarCoder> SidecarBuilder<T> {
     ) -> Result<BlobTransactionSidecar, c_kzg::Error> {
         let mut commitments = Vec::with_capacity(self.inner.blobs.len());
         let mut proofs = Vec::with_capacity(self.inner.blobs.len());
-        for blob in &self.inner.blobs {
+        for blob in self.inner.blobs.iter() {
             // SAFETY: same size
             let blob = unsafe { core::mem::transmute::<&Blob, &c_kzg::Blob>(blob) };
             let commitment = KzgCommitment::blob_to_kzg_commitment(blob, settings)?;

@@ -397,7 +397,7 @@ impl From<HashOrNumber> for BlockId {
     fn from(block: HashOrNumber) -> Self {
         match block {
             HashOrNumber::Hash(hash) => {
-                RpcBlockHash { block_hash: hash, require_canonical: None }.into()
+                Self::Hash(RpcBlockHash { block_hash: hash, require_canonical: None })
             }
             HashOrNumber::Number(num) => Self::Number(BlockNumberOrTag::Number(num)),
         }
@@ -406,19 +406,13 @@ impl From<HashOrNumber> for BlockId {
 
 impl From<B256> for BlockId {
     fn from(block_hash: B256) -> Self {
-        RpcBlockHash { block_hash, require_canonical: None }.into()
+        Self::Hash(RpcBlockHash { block_hash, require_canonical: None })
     }
 }
 
 impl From<(B256, Option<bool>)> for BlockId {
     fn from(hash_can: (B256, Option<bool>)) -> Self {
-        RpcBlockHash { block_hash: hash_can.0, require_canonical: hash_can.1 }.into()
-    }
-}
-
-impl From<RpcBlockHash> for BlockId {
-    fn from(value: RpcBlockHash) -> Self {
-        Self::Hash(value)
+        Self::Hash(RpcBlockHash { block_hash: hash_can.0, require_canonical: hash_can.1 })
     }
 }
 
@@ -550,8 +544,6 @@ impl Display for BlockId {
 pub enum ParseBlockIdError {
     /// Failed to parse a block id from a number.
     ParseIntError(ParseIntError),
-    /// Failed to parse hex number
-    ParseError(ParseError),
     /// Failed to parse a block id as a hex string.
     FromHexError(FromHexError),
 }
@@ -560,7 +552,6 @@ impl Display for ParseBlockIdError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ParseIntError(err) => write!(f, "{err}"),
-            Self::ParseError(err) => write!(f, "{err}"),
             Self::FromHexError(err) => write!(f, "{err}"),
         }
     }
@@ -572,7 +563,6 @@ impl std::error::Error for ParseBlockIdError {
         match self {
             Self::ParseIntError(err) => std::error::Error::source(err),
             Self::FromHexError(err) => std::error::Error::source(err),
-            Self::ParseError(err) => std::error::Error::source(err),
         }
     }
 }
@@ -593,11 +583,7 @@ impl FromStr for BlockId {
     type Err = ParseBlockIdError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.starts_with("0x") {
-            return if s.len() == 66 {
-                B256::from_str(s).map(Into::into).map_err(ParseBlockIdError::FromHexError)
-            } else {
-                U64::from_str(s).map(Into::into).map_err(ParseBlockIdError::ParseError)
-            };
+            return B256::from_str(s).map(Into::into).map_err(ParseBlockIdError::FromHexError);
         }
 
         match s {
@@ -692,12 +678,6 @@ impl HashOrNumber {
 impl From<B256> for HashOrNumber {
     fn from(value: B256) -> Self {
         Self::Hash(value)
-    }
-}
-
-impl From<&B256> for HashOrNumber {
-    fn from(value: &B256) -> Self {
-        Self::Hash(*value)
     }
 }
 
@@ -815,18 +795,6 @@ mod tests {
     use super::*;
 
     const HASH: B256 = b256!("1a15e3c30cf094a99826869517b16d185d45831d3a494f01030b0001a9d3ebb9");
-
-    #[test]
-    fn block_id_from_str() {
-        assert_eq!("0x0".parse::<BlockId>().unwrap(), BlockId::number(0));
-        assert_eq!("0x24A931".parse::<BlockId>().unwrap(), BlockId::number(2402609));
-        assert_eq!(
-            "0x1a15e3c30cf094a99826869517b16d185d45831d3a494f01030b0001a9d3ebb9"
-                .parse::<BlockId>()
-                .unwrap(),
-            HASH.into()
-        );
-    }
 
     #[test]
     #[cfg(feature = "serde")]

@@ -3,7 +3,7 @@
 //! See also <https://flashbots.github.io/relay-specs/>
 
 use crate::{BlsPublicKey, BlsSignature};
-use alloy_primitives::{Address, Bytes, B256, U256};
+use alloy_primitives::{Address, B256, U256};
 use alloy_rpc_types_engine::{
     BlobsBundleV1, ExecutionPayload, ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3,
 };
@@ -139,24 +139,6 @@ pub struct SignedBidSubmissionV3 {
     pub signature: BlsSignature,
 }
 
-/// Submission for the `/relay/v1/builder/blocks` endpoint (Electra).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(feature = "ssz", derive(ssz_derive::Decode, ssz_derive::Encode))]
-pub struct SignedBidSubmissionV4 {
-    /// The [`BidTrace`] message associated with the submission.
-    pub message: BidTrace,
-    /// The execution payload for the submission.
-    #[serde(with = "crate::payload::beacon_payload_v3")]
-    pub execution_payload: ExecutionPayloadV3,
-    /// The Electra block bundle for this bid.
-    pub blobs_bundle: BlobsBundleV1,
-    /// The Pectra execution requests for this bid.
-    pub execution_requests: Vec<Bytes>,
-    /// The signature associated with the submission.
-    pub signature: BlsSignature,
-}
-
 /// SubmitBlockRequest is the request from the builder to submit a block.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubmitBlockRequest {
@@ -211,23 +193,6 @@ pub struct BuilderBlockValidationRequestV2 {
     /// The withdrawals root for the validation request.
     pub withdrawals_root: B256,
 }
-
-/// A Request to validate a [SubmitBlockRequest] <https://github.com/flashbots/builder/blob/7577ac81da21e760ec6693637ce2a81fe58ac9f8/eth/block-validation/api.go#L198-L202>
-#[serde_as]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BuilderBlockValidationRequestV3 {
-    /// The [SubmitBlockRequest] data to be validated.
-    #[serde(flatten)]
-    pub request: SubmitBlockRequest,
-    /// The registered gas limit for the validation request.
-    #[serde_as(as = "DisplayFromStr")]
-    pub registered_gas_limit: u64,
-    /// The parent beacon block root for the validation request.
-    pub parent_beacon_block_root: B256,
-}
-
-/// A Request to validate a [SubmitBlockRequest] <https://github.com/flashbots/builder/blob/7577ac81da21e760ec6693637ce2a81fe58ac9f8/eth/block-validation/api.go#L198-L202>
-pub type BuilderBlockValidationRequestV4 = BuilderBlockValidationRequestV3;
 
 /// Query for the GET `/relay/v1/data/bidtraces/proposer_payload_delivered`
 ///
@@ -428,7 +393,6 @@ pub mod error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use similar_asserts::assert_eq;
 
     #[test]
     fn serde_validator() {
@@ -436,7 +400,6 @@ mod tests {
 
         let validators: Vec<Validator> = serde_json::from_str(s).unwrap();
         let json: serde_json::Value = serde_json::from_str(s).unwrap();
-
         assert_eq!(json, serde_json::to_value(validators).unwrap());
     }
 

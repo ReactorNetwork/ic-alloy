@@ -158,7 +158,6 @@ mod tests {
     use super::*;
     use arbitrary::Arbitrary;
     use rand::Rng;
-    use similar_asserts::assert_eq;
 
     #[test]
     fn log_arbitrary() {

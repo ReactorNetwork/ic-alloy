@@ -14,12 +14,6 @@ use std::{
 use tower::{Layer, Service};
 use tracing::trace;
 
-#[cfg(target_arch = "wasm32")]
-use wasmtimer::tokio::sleep;
-
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::time::sleep;
-
 /// A Transport Layer that is responsible for retrying requests based on the
 /// error type. See [`TransportError`].
 ///
@@ -198,7 +192,7 @@ where
                         "(all in ms) backing off due to rate limit"
                     );
 
-                    sleep(total_backoff).await;
+                    tokio::time::sleep(total_backoff).await;
                 } else {
                     this.requests_enqueued.fetch_sub(1, Ordering::SeqCst);
                     return Err(err);

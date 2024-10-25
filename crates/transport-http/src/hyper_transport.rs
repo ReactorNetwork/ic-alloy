@@ -1,95 +1,63 @@
+use crate::{Http, HttpConnect};
 use alloy_json_rpc::{RequestPacket, ResponsePacket};
 use alloy_transport::{
     utils::guess_local_url, TransportConnect, TransportError, TransportErrorKind, TransportFut,
 };
 use http_body_util::{BodyExt, Full};
 use hyper::{
-    body::{Bytes, Incoming},
-    header, Request, Response,
+    body::{Buf, Bytes},
+    header,
 };
-use hyper_util::client::legacy::Error;
-use std::{future::Future, marker::PhantomData, pin::Pin, task};
+use hyper_util::client::legacy::{connect::Connect, Client};
+use std::task;
 use tower::Service;
 use tracing::{debug, debug_span, trace, Instrument};
 
-use crate::{Http, HttpConnect};
-
-type Hyper = hyper_util::client::legacy::Client<
+/// A [`hyper`] HTTP client.
+pub type HyperClient = hyper_util::client::legacy::Client<
     hyper_util::client::legacy::connect::HttpConnector,
     http_body_util::Full<::hyper::body::Bytes>,
 >;
 
-/// A [`hyper`] based transport client.
+/// An [`Http`] transport using [`hyper`].
 pub type HyperTransport = Http<HyperClient>;
 
-impl HyperTransport {
-    /// Create a new [`HyperTransport`] with the given URL and default hyper client.
-    pub fn new_hyper(url: url::Url) -> Self {
-        let client = HyperClient::new();
-        Self::with_client(client, url)
+/// Connection details for a [`HyperTransport`].
+pub type HyperConnect = HttpConnect<HyperTransport>;
+
+impl TransportConnect for HyperConnect {
+    type Transport = HyperTransport;
+
+    fn is_local(&self) -> bool {
+        guess_local_url(self.url.as_str())
     }
-}
 
-/// A [hyper] based client that can be used with tower layers.
-#[derive(Clone, Debug)]
-pub struct HyperClient<B = Full<Bytes>, S = Hyper> {
-    service: S,
-    _pd: PhantomData<B>,
-}
-
-/// Alias for [`Response<Incoming>`]
-pub type HyperResponse = Response<Incoming>;
-
-/// Alias for pinned box future that results in [`HyperResponse`]
-pub type HyperResponseFut<T = HyperResponse, E = Error> =
-    Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'static>>;
-
-impl HyperClient {
-    /// Create a new [HyperClient] with the given URL and default hyper client.
-    pub fn new() -> Self {
+    fn get_transport<'a: 'b, 'b>(
+        &'a self,
+    ) -> alloy_transport::Pbf<'b, Self::Transport, TransportError> {
         let executor = hyper_util::rt::TokioExecutor::new();
 
-        let service =
-            hyper_util::client::legacy::Client::builder(executor).build_http::<Full<Bytes>>();
+        let client = hyper_util::client::legacy::Client::builder(executor).build_http();
 
-        Self { service, _pd: PhantomData }
+        Box::pin(async move { Ok(Http::with_client(client, self.url.clone())) })
     }
 }
 
-impl Default for HyperClient {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<B, S> HyperClient<B, S> {
-    /// Create a new [HyperClient] with the given URL and service.
-    pub const fn with_service(service: S) -> Self {
-        Self { service, _pd: PhantomData }
-    }
-}
-
-impl<B, S, ResBody> Http<HyperClient<B, S>>
+impl<C, B> Http<Client<C, Full<B>>>
 where
-    S: Service<Request<B>, Response = Response<ResBody>> + Clone + Send + Sync + 'static,
-    S::Future: Send,
-    S::Error: std::error::Error + Send + Sync + 'static,
-    B: From<Vec<u8>> + Send + 'static + Clone,
-    ResBody: BodyExt + Send + 'static,
-    ResBody::Error: std::error::Error + Send + Sync + 'static,
-    ResBody::Data: Send,
+    C: Connect + Clone + Send + Sync + 'static,
+    B: From<Bytes> + Buf + Send + 'static,
 {
-    /// Make a request to the server using the given service.
+    /// Make a request.
     fn request_hyper(&self, req: RequestPacket) -> TransportFut<'static> {
         let this = self.clone();
-        let span = debug_span!("HyperClient", url = %this.url);
+        let span = debug_span!("HyperTransport", url = %self.url);
         Box::pin(
             async move {
                 debug!(count = req.len(), "sending request packet to server");
                 let ser = req.serialize().map_err(TransportError::ser_err)?;
                 // convert the Box<RawValue> into a hyper request<B>
-                let body = ser.get().as_bytes().to_owned().into();
-
+                let body = Full::from(Bytes::from(<Box<[u8]>>::from(<Box<str>>::from(ser))));
                 let req = hyper::Request::builder()
                     .method(hyper::Method::POST)
                     .uri(this.url.as_str())
@@ -98,11 +66,9 @@ where
                         header::HeaderValue::from_static("application/json"),
                     )
                     .body(body)
-                    .expect("request parts are invalid");
+                    .expect("request parts are valid");
 
-                let mut service = this.client.service.clone();
-                let resp = service.call(req).await.map_err(TransportErrorKind::custom)?;
-
+                let resp = this.client.request(req).await.map_err(TransportErrorKind::custom)?;
                 let status = resp.status();
 
                 debug!(%status, "received response from server");
@@ -139,59 +105,43 @@ where
     }
 }
 
-impl TransportConnect for HttpConnect<HyperTransport> {
-    type Transport = HyperTransport;
-
-    fn is_local(&self) -> bool {
-        guess_local_url(self.url.as_str())
-    }
-
-    fn get_transport<'a: 'b, 'b>(
-        &'a self,
-    ) -> alloy_transport::Pbf<'b, Self::Transport, TransportError> {
-        Box::pin(async move {
-            let hyper_t = HyperClient::new();
-
-            Ok(Http::with_client(hyper_t, self.url.clone()))
-        })
-    }
-}
-
-impl<B, S> Service<RequestPacket> for Http<HyperClient<B, S>>
+impl<C, B> Service<RequestPacket> for &Http<Client<C, Full<B>>>
 where
-    S: Service<Request<B>, Response = HyperResponse> + Clone + Send + Sync + 'static,
-    S::Future: Send,
-    S::Error: std::error::Error + Send + Sync + 'static,
-    B: From<Vec<u8>> + Send + 'static + Clone + Sync,
+    C: Connect + Clone + Send + Sync + 'static,
+    B: From<Bytes> + Buf + Send + 'static,
 {
     type Response = ResponsePacket;
     type Error = TransportError;
     type Future = TransportFut<'static>;
 
+    #[inline]
     fn poll_ready(&mut self, _cx: &mut task::Context<'_>) -> task::Poll<Result<(), Self::Error>> {
+        // hyper always returns ok
         task::Poll::Ready(Ok(()))
     }
 
+    #[inline]
     fn call(&mut self, req: RequestPacket) -> Self::Future {
         self.request_hyper(req)
     }
 }
 
-impl<B, S> Service<RequestPacket> for &Http<HyperClient<B, S>>
+impl<C, B> Service<RequestPacket> for Http<Client<C, Full<B>>>
 where
-    S: Service<Request<B>, Response = HyperResponse> + Clone + Send + Sync + 'static,
-    S::Future: Send,
-    S::Error: std::error::Error + Send + Sync + 'static,
-    B: From<Vec<u8>> + Send + 'static + Clone + Sync,
+    C: Connect + Clone + Send + Sync + 'static,
+    B: From<Bytes> + Buf + Send + 'static,
 {
     type Response = ResponsePacket;
     type Error = TransportError;
     type Future = TransportFut<'static>;
 
+    #[inline]
     fn poll_ready(&mut self, _cx: &mut task::Context<'_>) -> task::Poll<Result<(), Self::Error>> {
+        // hyper always returns ok
         task::Poll::Ready(Ok(()))
     }
 
+    #[inline]
     fn call(&mut self, req: RequestPacket) -> Self::Future {
         self.request_hyper(req)
     }

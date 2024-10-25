@@ -2,29 +2,21 @@
 
 use crate::{Provider, RootProvider};
 use alloy_json_rpc::RpcError;
-use alloy_network::{BlockResponse, HeaderResponse, Network};
-use alloy_primitives::{
-    map::{B256HashMap, B256HashSet},
-    TxHash, B256,
-};
+use alloy_network::Network;
+use alloy_primitives::{TxHash, B256};
+use alloy_rpc_types_eth::Block;
 use alloy_transport::{utils::Spawnable, Transport, TransportError};
 use futures::{stream::StreamExt, FutureExt, Stream};
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     fmt,
     future::Future,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::{
     select,
     sync::{mpsc, oneshot, watch},
 };
-
-#[cfg(target_arch = "wasm32")]
-use wasmtimer::{std::Instant, tokio::sleep_until};
-
-#[cfg(not(target_arch = "wasm32"))]
-use {std::time::Instant, tokio::time::sleep_until};
 
 /// Errors which may occur when watching a pending transaction.
 #[derive(Debug, thiserror::Error)]
@@ -82,20 +74,20 @@ pub enum PendingTransactionError {
 #[must_use = "this type does nothing unless you call `register`, `watch` or `get_receipt`"]
 #[derive(Debug)]
 #[doc(alias = "PendingTxBuilder")]
-pub struct PendingTransactionBuilder<T, N: Network> {
+pub struct PendingTransactionBuilder<'a, T, N> {
     config: PendingTransactionConfig,
-    provider: RootProvider<T, N>,
+    provider: &'a RootProvider<T, N>,
 }
 
-impl<T: Transport + Clone, N: Network> PendingTransactionBuilder<T, N> {
+impl<'a, T: Transport + Clone, N: Network> PendingTransactionBuilder<'a, T, N> {
     /// Creates a new pending transaction builder.
-    pub const fn new(provider: RootProvider<T, N>, tx_hash: TxHash) -> Self {
+    pub const fn new(provider: &'a RootProvider<T, N>, tx_hash: TxHash) -> Self {
         Self::from_config(provider, PendingTransactionConfig::new(tx_hash))
     }
 
     /// Creates a new pending transaction builder from the given configuration.
     pub const fn from_config(
-        provider: RootProvider<T, N>,
+        provider: &'a RootProvider<T, N>,
         config: PendingTransactionConfig,
     ) -> Self {
         Self { config, provider }
@@ -107,17 +99,17 @@ impl<T: Transport + Clone, N: Network> PendingTransactionBuilder<T, N> {
     }
 
     /// Consumes this builder, returning the inner configuration.
-    pub fn into_inner(self) -> PendingTransactionConfig {
+    pub const fn into_inner(self) -> PendingTransactionConfig {
         self.config
     }
 
     /// Returns the provider.
-    pub const fn provider(&self) -> &RootProvider<T, N> {
-        &self.provider
+    pub const fn provider(&self) -> &'a RootProvider<T, N> {
+        self.provider
     }
 
     /// Consumes this builder, returning the provider and the configuration.
-    pub fn split(self) -> (RootProvider<T, N>, PendingTransactionConfig) {
+    pub const fn split(self) -> (&'a RootProvider<T, N>, PendingTransactionConfig) {
         (self.provider, self.config)
     }
 
@@ -325,8 +317,8 @@ impl PendingTransactionConfig {
     /// Wraps this configuration with a provider to expose watching methods.
     pub const fn with_provider<T: Transport + Clone, N: Network>(
         self,
-        provider: RootProvider<T, N>,
-    ) -> PendingTransactionBuilder<T, N> {
+        provider: &RootProvider<T, N>,
+    ) -> PendingTransactionBuilder<'_, T, N> {
         PendingTransactionBuilder::from_config(provider, self)
     }
 }
@@ -408,12 +400,12 @@ impl Future for PendingTransaction {
 
 /// A handle to the heartbeat task.
 #[derive(Clone, Debug)]
-pub(crate) struct HeartbeatHandle<N: Network> {
+pub(crate) struct HeartbeatHandle {
     tx: mpsc::Sender<TxWatcher>,
-    latest: watch::Receiver<Option<N::BlockResponse>>,
+    latest: watch::Receiver<Option<Block>>,
 }
 
-impl<N: Network> HeartbeatHandle<N> {
+impl HeartbeatHandle {
     /// Watch for a transaction to be confirmed with the given config.
     #[doc(alias = "watch_transaction")]
     pub(crate) async fn watch_tx(
@@ -431,33 +423,31 @@ impl<N: Network> HeartbeatHandle<N> {
 
     /// Returns a watcher that always sees the latest block.
     #[allow(dead_code)]
-    pub(crate) const fn latest(&self) -> &watch::Receiver<Option<N::BlockResponse>> {
+    pub(crate) const fn latest(&self) -> &watch::Receiver<Option<Block>> {
         &self.latest
     }
 }
 
 // TODO: Parameterize with `Network`
 /// A heartbeat task that receives blocks and watches for transactions.
-pub(crate) struct Heartbeat<N, S> {
+pub(crate) struct Heartbeat<S> {
     /// The stream of incoming blocks to watch.
     stream: futures::stream::Fuse<S>,
 
     /// Lookbehind blocks in form of mapping block number -> vector of transaction hashes.
-    past_blocks: VecDeque<(u64, B256HashSet)>,
+    past_blocks: VecDeque<(u64, HashSet<B256>)>,
 
     /// Transactions to watch for.
-    unconfirmed: B256HashMap<TxWatcher>,
+    unconfirmed: HashMap<B256, TxWatcher>,
 
     /// Ordered map of transactions waiting for confirmations.
     waiting_confs: BTreeMap<u64, Vec<TxWatcher>>,
 
     /// Ordered map of transactions to reap at a certain time.
     reap_at: BTreeMap<Instant, B256>,
-
-    _network: std::marker::PhantomData<N>,
 }
 
-impl<N: Network, S: Stream<Item = N::BlockResponse> + Unpin + 'static> Heartbeat<N, S> {
+impl<S: Stream<Item = Block> + Unpin + 'static> Heartbeat<S> {
     /// Create a new heartbeat task.
     pub(crate) fn new(stream: S) -> Self {
         Self {
@@ -466,10 +456,11 @@ impl<N: Network, S: Stream<Item = N::BlockResponse> + Unpin + 'static> Heartbeat
             unconfirmed: Default::default(),
             waiting_confs: Default::default(),
             reap_at: Default::default(),
-            _network: Default::default(),
         }
     }
+}
 
+impl<S> Heartbeat<S> {
     /// Check if any transactions have enough confirmations to notify.
     fn check_confirmations(&mut self, current_height: u64) {
         let to_keep = self.waiting_confs.split_off(&(current_height + 1));
@@ -570,13 +561,9 @@ impl<N: Network, S: Stream<Item = N::BlockResponse> + Unpin + 'static> Heartbeat
     /// Handle a new block by checking if any of the transactions we're
     /// watching are in it, and if so, notifying the watcher. Also updates
     /// the latest block.
-    fn handle_new_block(
-        &mut self,
-        block: N::BlockResponse,
-        latest: &watch::Sender<Option<N::BlockResponse>>,
-    ) {
+    fn handle_new_block(&mut self, block: Block, latest: &watch::Sender<Option<Block>>) {
         // Blocks without numbers are ignored, as they're not part of the chain.
-        let block_height = block.header().number();
+        let block_height = &block.header.number;
 
         // Add the block the lookbehind.
         // The value is chosen arbitrarily to not have a huge memory footprint but still
@@ -590,19 +577,19 @@ impl<N: Network, S: Stream<Item = N::BlockResponse> + Unpin + 'static> Heartbeat
         }
         if let Some((last_height, _)) = self.past_blocks.back().as_ref() {
             // Check that the chain is continuous.
-            if *last_height + 1 != block_height {
+            if *last_height + 1 != *block_height {
                 // Move all the transactions that were reset by the reorg to the unconfirmed list.
                 warn!(%block_height, last_height, "reorg detected");
-                self.move_reorg_to_unconfirmed(block_height);
+                self.move_reorg_to_unconfirmed(*block_height);
                 // Remove past blocks that are now invalid.
-                self.past_blocks.retain(|(h, _)| *h < block_height);
+                self.past_blocks.retain(|(h, _)| h < block_height);
             }
         }
-        self.past_blocks.push_back((block_height, block.transactions().hashes().collect()));
+        self.past_blocks.push_back((*block_height, block.transactions.hashes().collect()));
 
         // Check if we are watching for any of the transactions in this block.
         let to_check: Vec<_> = block
-            .transactions()
+            .transactions
             .hashes()
             .filter_map(|tx_hash| self.unconfirmed.remove(&tx_hash))
             .collect();
@@ -620,12 +607,12 @@ impl<N: Network, S: Stream<Item = N::BlockResponse> + Unpin + 'static> Heartbeat
                 warn!(tx=%watcher.config.tx_hash, set_block=%set_block, new_block=%block_height, "received_at_block already set");
                 // We don't override the set value.
             } else {
-                watcher.received_at_block = Some(block_height);
+                watcher.received_at_block = Some(*block_height);
             }
-            self.add_to_waiting_list(watcher, block_height);
+            self.add_to_waiting_list(watcher, *block_height);
         }
 
-        self.check_confirmations(block_height);
+        self.check_confirmations(*block_height);
 
         // Update the latest block. We use `send_replace` here to ensure the
         // latest block is always up to date, even if no receivers exist.
@@ -636,41 +623,41 @@ impl<N: Network, S: Stream<Item = N::BlockResponse> + Unpin + 'static> Heartbeat
 }
 
 #[cfg(target_arch = "wasm32")]
-impl<N: Network, S: Stream<Item = N::BlockResponse> + Unpin + 'static> Heartbeat<N, S> {
+impl<S: Stream<Item = Block> + Unpin + 'static> Heartbeat<S> {
     /// Spawn the heartbeat task, returning a [`HeartbeatHandle`].
-    pub(crate) fn spawn(self) -> HeartbeatHandle<N> {
-        let (task, handle) = self.consume();
-        task.spawn_task();
-        handle
+    pub(crate) fn spawn(self) -> HeartbeatHandle {
+        let (latest, latest_rx) = watch::channel(None::<Block>);
+        let (ix_tx, ixns) = mpsc::channel(16);
+
+        self.into_future(latest, ixns).spawn_task();
+
+        HeartbeatHandle { tx: ix_tx, latest: latest_rx }
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl<N: Network, S: Stream<Item = N::BlockResponse> + Unpin + Send + 'static> Heartbeat<N, S> {
+impl<S: Stream<Item = Block> + Unpin + Send + 'static> Heartbeat<S> {
     /// Spawn the heartbeat task, returning a [`HeartbeatHandle`].
-    pub(crate) fn spawn(self) -> HeartbeatHandle<N> {
-        let (task, handle) = self.consume();
-        task.spawn_task();
-        handle
+    pub(crate) fn spawn(self) -> HeartbeatHandle {
+        let (latest, latest_rx) = watch::channel(None::<Block>);
+        let (ix_tx, ixns) = mpsc::channel(16);
+
+        self.into_future(latest, ixns).spawn_task();
+
+        HeartbeatHandle { tx: ix_tx, latest: latest_rx }
     }
 }
 
-impl<N: Network, S: Stream<Item = N::BlockResponse> + Unpin + 'static> Heartbeat<N, S> {
-    fn consume(self) -> (impl Future<Output = ()>, HeartbeatHandle<N>) {
-        let (latest, latest_rx) = watch::channel(None::<N::BlockResponse>);
-        let (ix_tx, ixns) = mpsc::channel(16);
-        (self.into_future(latest, ixns), HeartbeatHandle { tx: ix_tx, latest: latest_rx })
-    }
-
+impl<S: Stream<Item = Block> + Unpin + 'static> Heartbeat<S> {
     async fn into_future(
         mut self,
-        latest: watch::Sender<Option<N::BlockResponse>>,
+        latest: watch::Sender<Option<Block>>,
         mut ixns: mpsc::Receiver<TxWatcher>,
     ) {
         'shutdown: loop {
             {
                 let next_reap = self.next_reap();
-                let sleep = std::pin::pin!(sleep_until(next_reap.into()));
+                let sleep = std::pin::pin!(tokio::time::sleep_until(next_reap.into()));
 
                 // We bias the select so that we always handle new messages
                 // before checking blocks, and reap timeouts are last.

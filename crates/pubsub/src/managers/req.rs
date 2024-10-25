@@ -1,11 +1,11 @@
 use crate::managers::InFlight;
 use alloy_json_rpc::{Id, Response, SubId};
-use alloy_primitives::map::HashMap;
+use std::collections::BTreeMap;
 
 /// Manages in-flight requests.
 #[derive(Debug, Default)]
 pub(crate) struct RequestManager {
-    reqs: HashMap<Id, InFlight>,
+    reqs: BTreeMap<Id, InFlight>,
 }
 
 impl RequestManager {

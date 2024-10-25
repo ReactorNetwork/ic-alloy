@@ -20,7 +20,7 @@ pub type ReqwestProvider<N = alloy_network::Ethereum> =
 /// [`Http`]: alloy_transport_http::Http
 #[cfg(feature = "hyper")]
 pub type HyperProvider<N = alloy_network::Ethereum> =
-    crate::RootProvider<alloy_transport_http::HyperTransport, N>;
+    crate::RootProvider<alloy_transport_http::Http<alloy_transport_http::HyperClient>, N>;
 
 /// Type alias for a [`RootProvider`] using the [`IcpTransport`] transport.
 ///
@@ -35,11 +35,12 @@ extern crate tracing;
 mod builder;
 pub use builder::{Identity, ProviderBuilder, ProviderLayer, Stack};
 
-mod blocks;
-
 pub mod ext;
 
 pub mod fillers;
+pub mod layers;
+
+mod chain;
 
 mod heart;
 pub use heart::{
@@ -47,12 +48,10 @@ pub use heart::{
     PendingTransactionError, WatchTxError,
 };
 
-pub mod layers;
-
 mod provider;
 pub use provider::{
-    builder, Caller, EthCall, EthCallParams, FilterPollerBuilder, ParamsWithBlock, Provider,
-    ProviderCall, RootProvider, RpcWithBlock, SendableTx, WalletProvider,
+    builder, EthCall, FilterPollerBuilder, Provider, RootProvider, RpcWithBlock, SendableTx,
+    WalletProvider,
 };
 
 pub mod utils;

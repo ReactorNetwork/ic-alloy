@@ -1,5 +1,4 @@
 use alloy_primitives::{Bloom, Log};
-use core::fmt;
 
 mod any;
 pub use any::AnyReceiptEnvelope;
@@ -8,15 +7,14 @@ mod envelope;
 pub use envelope::ReceiptEnvelope;
 
 mod receipts;
-pub use receipts::{Receipt, ReceiptWithBloom, Receipts};
+pub use receipts::{Receipt, ReceiptWithBloom};
 
 mod status;
 pub use status::Eip658Value;
 
 /// Receipt is the result of a transaction execution.
 #[doc(alias = "TransactionReceipt")]
-#[auto_impl::auto_impl(&, Arc)]
-pub trait TxReceipt<T = Log>: Clone + fmt::Debug + PartialEq + Eq + Send + Sync {
+pub trait TxReceipt<T = Log> {
     /// Returns the status or post state of the transaction.
     ///
     /// ## Note
@@ -25,7 +23,7 @@ pub trait TxReceipt<T = Log>: Clone + fmt::Debug + PartialEq + Eq + Send + Sync 
     /// is pre-[EIP-658].
     ///
     /// [EIP-658]: https://eips.ethereum.org/EIPS/eip-658
-    fn status_or_post_state(&self) -> Eip658Value;
+    fn status_or_post_state(&self) -> &Eip658Value;
 
     /// Returns true if the transaction was successful OR if the transaction is
     /// pre-[EIP-658]. Results for transactions before [EIP-658] are not
@@ -156,11 +154,9 @@ mod tests {
         }
         .with_bloom();
 
-        let len = receipt.length();
-        let mut data = Vec::with_capacity(receipt.length());
+        let mut data = vec![];
 
         receipt.encode(&mut data);
-        assert_eq!(data.len(), len);
         let decoded = ReceiptWithBloom::decode(&mut &data[..]).unwrap();
 
         // receipt.clone().to_compact(&mut data);
