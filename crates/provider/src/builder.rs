@@ -1,7 +1,7 @@
 use crate::{
     fillers::{
         CachedNonceManager, ChainIdFiller, FillerControlFlow, GasFiller, JoinFill, NonceFiller,
-        NonceManager, RecommendedFiller, SimpleNonceManager, TxFiller, WalletFiller,
+        NonceManager, RecommendedFillers, SimpleNonceManager, TxFiller, WalletFiller,
     },
     provider::SendableTx,
     Provider, RootProvider,
@@ -127,11 +127,16 @@ impl<N> Default for ProviderBuilder<Identity, Identity, N> {
     }
 }
 
-impl<L, N> ProviderBuilder<L, Identity, N> {
+impl<L, N: Network> ProviderBuilder<L, Identity, N> {
     /// Add preconfigured set of layers handling gas estimation, nonce
     /// management, and chain-id fetching.
-    pub fn with_recommended_fillers(self) -> ProviderBuilder<L, RecommendedFiller, N> {
-        self.filler(GasFiller).filler(NonceFiller::default()).filler(ChainIdFiller::default())
+    pub fn with_recommended_fillers(
+        self,
+    ) -> ProviderBuilder<L, JoinFill<Identity, N::RecomendedFillers>, N>
+    where
+        N: RecommendedFillers,
+    {
+        self.filler(N::recommended_fillers())
     }
 
     /// Add gas estimation to the stack being built.
@@ -349,17 +354,8 @@ impl<L, F, N> ProviderBuilder<L, F, N> {
     #[cfg(feature = "hyper")]
     pub fn on_hyper_http(self, url: url::Url) -> F::Provider
     where
-        L: ProviderLayer<
-            crate::HyperProvider<N>,
-            alloy_transport_http::Http<alloy_transport_http::HyperClient>,
-            N,
-        >,
-        F: TxFiller<N>
-            + ProviderLayer<
-                L::Provider,
-                alloy_transport_http::Http<alloy_transport_http::HyperClient>,
-                N,
-            >,
+        L: ProviderLayer<crate::HyperProvider<N>, alloy_transport_http::HyperTransport, N>,
+        F: TxFiller<N> + ProviderLayer<L::Provider, alloy_transport_http::HyperTransport, N>,
         N: Network,
     {
         let client = ClientBuilder::default().hyper_http(url);
@@ -486,6 +482,8 @@ impl<L, F> ProviderBuilder<L, F, Ethereum> {
             alloy_transport_http::Http<reqwest::Client>,
         >,
     {
+        use alloy_signer::Signer;
+
         let anvil_layer = crate::layers::AnvilLayer::from(f(Default::default()));
         let url = anvil_layer.endpoint_url();
 
@@ -493,12 +491,13 @@ impl<L, F> ProviderBuilder<L, F, Ethereum> {
         let (default_key, remaining_keys) =
             default_keys.split_first().ok_or(alloy_node_bindings::NodeError::NoKeysAvailable)?;
 
-        let default_signer = alloy_signer_local::LocalSigner::from(default_key.clone());
+        let default_signer = alloy_signer_local::LocalSigner::from(default_key.clone())
+            .with_chain_id(Some(anvil_layer.instance().chain_id()));
         let mut wallet = alloy_network::EthereumWallet::from(default_signer);
 
-        remaining_keys.iter().for_each(|key| {
+        for key in remaining_keys {
             wallet.register_signer(alloy_signer_local::LocalSigner::from(key.clone()))
-        });
+        }
 
         Ok(self.wallet(wallet).layer(anvil_layer).on_http(url))
     }

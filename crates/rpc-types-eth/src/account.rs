@@ -1,7 +1,7 @@
-use alloy_primitives::{Address, Bytes, B256, B512, U256};
-use alloy_serde::storage::JsonStorageKey;
+#![allow(unused_imports)]
 
 use alloc::{string::String, vec::Vec};
+use alloy_primitives::{Address, Bytes, B256, B512, U256};
 
 // re-export account type for `eth_getAccount`
 pub use alloy_consensus::Account;
@@ -16,11 +16,12 @@ pub struct AccountInfo {
 
 /// Data structure with proof for one single storage-entry
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg(feature = "serde")]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct EIP1186StorageProof {
     /// Storage key.
-    pub key: JsonStorageKey,
+    pub key: alloy_serde::storage::JsonStorageKey,
     /// Value that the key holds
     pub value: U256,
     /// proof for the pair
@@ -29,6 +30,7 @@ pub struct EIP1186StorageProof {
 
 /// Response for EIP-1186 account proof `eth_getProof`
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg(feature = "serde")]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct EIP1186AccountProofResponse {
