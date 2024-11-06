@@ -37,6 +37,7 @@ alloy-rpc-types-engine = { workspace = true, optional = true, features = [
 ] }
 alloy-rpc-types = { workspace = true, optional = true }
 alloy-transport-http = { workspace = true, optional = true }
+alloy-transport-icp = { workspace = true, optional = true }
 alloy-transport-ipc = { workspace = true, optional = true }
 alloy-transport-ws = { workspace = true, optional = true }
 alloy-pubsub = { workspace = true, optional = true }
@@ -75,13 +76,6 @@ reqwest.workspace = true
 tokio = { workspace = true, features = ["macros"] }
 tracing-subscriber = { workspace = true, features = ["fmt"] }
 tempfile.workspace = true
-tower.workspace = true
-tower-http = { workspace = true, features = [
-    "set-header",
-    "sensitive-headers",
-] }
-http-body-util.workspace = true
-http.workspace = true
 
 [features]
 default = ["reqwest", "reqwest-default-tls"]
@@ -94,6 +88,7 @@ reqwest = [
 ]
 hyper = ["dep:alloy-transport-http", "dep:url", "alloy-rpc-client/hyper"]
 ws = ["pubsub", "alloy-rpc-client/ws", "alloy-transport-ws"]
+icp = ["alloy-rpc-client/icp", "alloy-transport-icp"]
 ipc = ["pubsub", "alloy-rpc-client/ipc", "alloy-transport-ipc"]
 reqwest-default-tls = ["alloy-transport-http?/reqwest-default-tls"]
 reqwest-rustls-tls = ["alloy-transport-http?/reqwest-rustls-tls"]

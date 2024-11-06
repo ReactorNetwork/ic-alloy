@@ -6,6 +6,7 @@ use alloy_network_primitives::{
     BlockResponse, BlockTransactions, HeaderResponse, TransactionResponse,
 };
 use alloy_primitives::{Address, BlockHash, Bloom, Bytes, B256, B64, U256};
+use alloy_serde::WithOtherFields;
 
 use alloc::vec::Vec;
 
@@ -293,15 +294,13 @@ impl std::error::Error for BlockError {
     }
 }
 
-#[cfg(feature = "serde")]
-impl From<Block> for alloy_serde::WithOtherFields<Block> {
+impl From<Block> for WithOtherFields<Block> {
     fn from(inner: Block) -> Self {
         Self { inner, other: Default::default() }
     }
 }
 
-#[cfg(feature = "serde")]
-impl From<Header> for alloy_serde::WithOtherFields<Header> {
+impl From<Header> for WithOtherFields<Header> {
     fn from(inner: Header) -> Self {
         Self { inner, other: Default::default() }
     }
@@ -578,10 +577,9 @@ mod tests {
     "size": "0xaeb6"
 }"#;
 
-        let block = serde_json::from_str::<alloy_serde::WithOtherFields<Block>>(s).unwrap();
+        let block = serde_json::from_str::<WithOtherFields<Block>>(s).unwrap();
         let serialized = serde_json::to_string(&block).unwrap();
-        let block2 =
-            serde_json::from_str::<alloy_serde::WithOtherFields<Block>>(&serialized).unwrap();
+        let block2 = serde_json::from_str::<WithOtherFields<Block>>(&serialized).unwrap();
         assert_eq!(block, block2);
     }
 

@@ -3,7 +3,6 @@
 use alloy_primitives::{hex, Address, ChainId};
 use k256::{ecdsa::SigningKey, SecretKey as K256SecretKey};
 use std::{
-    ffi::OsString,
     io::{BufRead, BufReader},
     net::SocketAddr,
     path::PathBuf,
@@ -124,7 +123,7 @@ pub struct Anvil {
     mnemonic: Option<String>,
     fork: Option<String>,
     fork_block_number: Option<u64>,
-    args: Vec<OsString>,
+    args: Vec<String>,
     timeout: Option<u64>,
 }
 
@@ -220,7 +219,7 @@ impl Anvil {
     }
 
     /// Adds an argument to pass to the `anvil`.
-    pub fn arg<T: Into<OsString>>(mut self, arg: T) -> Self {
+    pub fn arg<T: Into<String>>(mut self, arg: T) -> Self {
         self.args.push(arg.into());
         self
     }
@@ -229,7 +228,7 @@ impl Anvil {
     pub fn args<I, S>(mut self, args: I) -> Self
     where
         I: IntoIterator<Item = S>,
-        S: Into<OsString>,
+        S: Into<String>,
     {
         for arg in args {
             self = self.arg(arg);

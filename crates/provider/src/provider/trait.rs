@@ -3,7 +3,7 @@ use crate::{
     heart::PendingTransactionError,
     utils::{self, Eip1559Estimation, EstimatorFunction},
     EthCall, Identity, PendingTransaction, PendingTransactionBuilder, PendingTransactionConfig,
-    ProviderBuilder, ProviderCall, RootProvider, RpcWithBlock, SendableTx,
+    ProviderBuilder, RootProvider, RpcWithBlock, SendableTx,
 };
 use alloy_eips::eip2718::Encodable2718;
 use alloy_json_rpc::{RpcError, RpcParam, RpcReturn};
@@ -15,7 +15,7 @@ use alloy_primitives::{
     hex, Address, BlockHash, BlockNumber, Bytes, StorageKey, StorageValue, TxHash, B256, U128,
     U256, U64,
 };
-use alloy_rpc_client::{ClientRef, NoParams, PollerBuilder, WeakClient};
+use alloy_rpc_client::{ClientRef, IcpPollerBuilder, NoParams, PollerBuilder, RpcCall, WeakClient};
 use alloy_rpc_types_eth::{
     AccessListResult, BlockId, BlockNumberOrTag, EIP1186AccountProofResponse, FeeHistory, Filter,
     FilterChanges, Log, SyncStatus,
@@ -27,7 +27,14 @@ use std::borrow::Cow;
 /// A task that polls the provider with `eth_getFilterChanges`, returning a list of `R`.
 ///
 /// See [`PollerBuilder`] for more details.
+#[cfg(not(feature = "icp"))]
 pub type FilterPollerBuilder<T, R> = PollerBuilder<T, (U256,), Vec<R>>;
+
+/// A task that polls the provider with `eth_getFilterChanges`, returning a list of `R`.
+///
+/// See [`PollerBuilder`] for more details.
+#[cfg(feature = "icp")]
+pub type FilterPollerBuilder<T, R> = IcpPollerBuilder<T, (U256,), Vec<R>>;
 
 // todo: adjust docs
 // todo: reorder
@@ -99,24 +106,18 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
 
     /// Gets the accounts in the remote node. This is usually empty unless you're using a local
     /// node.
-    fn get_accounts(&self) -> ProviderCall<T, NoParams, Vec<Address>> {
-        self.client().request_noparams("eth_accounts").into()
+    async fn get_accounts(&self) -> TransportResult<Vec<Address>> {
+        self.client().request_noparams("eth_accounts").await
     }
 
     /// Returns the base fee per blob gas (blob gas price) in wei.
-    fn get_blob_base_fee(&self) -> ProviderCall<T, NoParams, U128, u128> {
-        self.client()
-            .request_noparams("eth_blobBaseFee")
-            .map_resp(utils::convert_u128 as fn(U128) -> u128)
-            .into()
+    async fn get_blob_base_fee(&self) -> TransportResult<u128> {
+        self.client().request_noparams("eth_blobBaseFee").await.map(|fee: U128| fee.to::<u128>())
     }
 
     /// Get the last block number available.
-    fn get_block_number(&self) -> ProviderCall<T, NoParams, U64, BlockNumber> {
-        self.client()
-            .request_noparams("eth_blockNumber")
-            .map_resp(crate::utils::convert_u64 as fn(U64) -> u64)
-            .into()
+    fn get_block_number(&self) -> RpcCall<T, NoParams, U64, BlockNumber> {
+        self.client().request_noparams("eth_blockNumber").map_resp(crate::utils::convert_u64)
     }
 
     /// Execute a smart contract call with a transaction request and state
@@ -143,21 +144,29 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
     /// # let tx = alloy_rpc_types_eth::transaction::TransactionRequest::default();
     /// // Execute a call on the latest block, with no state overrides
     /// let output = provider.call(&tx).await?;
+    /// // Execute a call with a block ID.
+    /// let output = provider.call(&tx).block(1.into()).await?;
+    /// // Execute a call with state overrides.
+    /// let output = provider.call(&tx).overrides(&my_overrides).await?;
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Note
+    ///
+    /// Not all client implementations support state overrides.
     #[doc(alias = "eth_call")]
     #[doc(alias = "call_with_overrides")]
-    fn call<'req>(&self, tx: &'req N::TransactionRequest) -> EthCall<'req, T, N, Bytes> {
+    fn call<'req, 'state>(
+        &self,
+        tx: &'req N::TransactionRequest,
+    ) -> EthCall<'req, 'state, T, N, Bytes> {
         EthCall::new(self.weak_client(), tx)
     }
 
-    /// Gets the chain ID.  
-    fn get_chain_id(&self) -> ProviderCall<T, NoParams, U64, u64> {
-        self.client()
-            .request_noparams("eth_chainId")
-            .map_resp(crate::utils::convert_u64 as fn(U64) -> u64)
-            .into()
+    /// Gets the chain ID.
+    fn get_chain_id(&self) -> RpcCall<T, NoParams, U64, u64> {
+        self.client().request_noparams("eth_chainId").map_resp(crate::utils::convert_u64)
     }
 
     /// Create an [EIP-2930] access list.
@@ -167,7 +176,7 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
         &self,
         request: &'a N::TransactionRequest,
     ) -> RpcWithBlock<T, &'a N::TransactionRequest, AccessListResult> {
-        self.client().request("eth_createAccessList", request).into()
+        RpcWithBlock::new(self.weak_client(), "eth_createAccessList", request)
     }
 
     /// This function returns an [`EthCall`] which can be used to get a gas estimate,
@@ -183,7 +192,7 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
     fn estimate_gas<'req>(
         &self,
         tx: &'req N::TransactionRequest,
-    ) -> EthCall<'req, T, N, U128, u128> {
+    ) -> EthCall<'req, 'static, T, N, U128, u128> {
         EthCall::gas_estimate(self.weak_client(), tx).map_resp(crate::utils::convert_u128)
     }
 
@@ -239,24 +248,21 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
     }
 
     /// Gets the current gas price in wei.
-    fn get_gas_price(&self) -> ProviderCall<T, NoParams, U128, u128> {
-        self.client()
-            .request_noparams("eth_gasPrice")
-            .map_resp(crate::utils::convert_u128 as fn(U128) -> u128)
-            .into()
+    fn get_gas_price(&self) -> RpcCall<T, NoParams, U128, u128> {
+        self.client().request_noparams("eth_gasPrice").map_resp(crate::utils::convert_u128)
     }
 
     /// Retrieves account information ([Account](alloy_consensus::Account)) for the given [Address]
     /// at the particular [BlockId].
     fn get_account(&self, address: Address) -> RpcWithBlock<T, Address, alloy_consensus::Account> {
-        self.client().request("eth_getAccount", address).into()
+        RpcWithBlock::new(self.weak_client(), "eth_getAccount", address)
     }
 
     /// Gets the balance of the account.
     ///
     /// Defaults to the latest block. See also [`RpcWithBlock::block_id`].
-    fn get_balance(&self, address: Address) -> RpcWithBlock<T, Address, U256, U256> {
-        self.client().request("eth_getBalance", address).into()
+    fn get_balance(&self, address: Address) -> RpcWithBlock<T, Address, U256> {
+        RpcWithBlock::new(self.weak_client(), "eth_getBalance", address)
     }
 
     /// Gets a block by either its hash, tag, or number, with full transactions or only hashes.
@@ -324,16 +330,16 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
     }
 
     /// Gets the selected block [BlockId] receipts.
-    fn get_block_receipts(
+    async fn get_block_receipts(
         &self,
         block: BlockId,
-    ) -> ProviderCall<T, (BlockId,), Option<Vec<N::ReceiptResponse>>> {
-        self.client().request("eth_getBlockReceipts", (block,)).into()
+    ) -> TransportResult<Option<Vec<N::ReceiptResponse>>> {
+        self.client().request("eth_getBlockReceipts", (block,)).await
     }
 
     /// Gets the bytecode located at the corresponding [Address].
     fn get_code_at(&self, address: Address) -> RpcWithBlock<T, Address, Bytes> {
-        self.client().request("eth_getCode", address).into()
+        RpcWithBlock::new(self.weak_client(), "eth_getCode", address)
     }
 
     /// Watch for new blocks by polling the provider with
@@ -358,9 +364,42 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
     /// # Ok(())
     /// # }
     /// ```
+    #[cfg(not(feature = "icp"))]
     async fn watch_blocks(&self) -> TransportResult<FilterPollerBuilder<T, B256>> {
         let id = self.new_block_filter().await?;
         Ok(PollerBuilder::new(self.weak_client(), "eth_getFilterChanges", (id,)))
+    }
+
+    /// Watch for new blocks by polling the provider with
+    /// [`eth_getFilterChanges`](Self::get_filter_changes).
+    ///
+    /// Returns a builder that is used to configure the poller. See [`PollerBuilder`] for more
+    /// details.
+    ///
+    /// # Examples
+    ///
+    /// Get and print the next 3 blocks:
+    ///
+    /// ```no_run
+    ///     let callback = |incoming_blocks: Vec<FixedBytes<32>>| {
+    ///         STATE.with_borrow_mut(|state| {
+    ///             for block in incoming_blocks.iter() {
+    ///                 ic_cdk::println!("{block:?}")
+    ///             }
+    ///         })
+    ///     };
+    ///
+    ///     let poller = provider.watch_blocks().await.unwrap();
+    ///     let timer_id = poller
+    ///         .with_limit(Some(10))
+    ///         .with_poll_interval(Duration::from_secs(5))
+    ///         .start(callback)
+    ///         .unwrap();
+    /// ```
+    #[cfg(feature = "icp")]
+    async fn watch_blocks(&self) -> TransportResult<FilterPollerBuilder<T, B256>> {
+        let id = self.new_block_filter().await?;
+        Ok(IcpPollerBuilder::new(self.weak_client(), "eth_getFilterChanges", (id,)))
     }
 
     /// Watch for new pending transaction by polling the provider with
@@ -385,9 +424,21 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
     /// # Ok(())
     /// # }
     /// ```
+    #[cfg(not(feature = "icp"))]
     async fn watch_pending_transactions(&self) -> TransportResult<FilterPollerBuilder<T, B256>> {
         let id = self.new_pending_transactions_filter(false).await?;
         Ok(PollerBuilder::new(self.weak_client(), "eth_getFilterChanges", (id,)))
+    }
+
+    /// Watch for new pending transaction by polling the provider with
+    /// [`eth_getFilterChanges`](Self::get_filter_changes).
+    ///
+    /// Returns a builder that is used to configure the poller. See [`PollerBuilder`] for more
+    /// details.
+    #[cfg(feature = "icp")]
+    async fn watch_pending_transactions(&self) -> TransportResult<FilterPollerBuilder<T, B256>> {
+        let id = self.new_pending_transactions_filter(false).await?;
+        Ok(IcpPollerBuilder::new(self.weak_client(), "eth_getFilterChanges", (id,)))
     }
 
     /// Watch for new logs using the given filter by polling the provider with
@@ -418,9 +469,67 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
     /// # Ok(())
     /// # }
     /// ```
+    #[cfg(not(feature = "icp"))]
     async fn watch_logs(&self, filter: &Filter) -> TransportResult<FilterPollerBuilder<T, Log>> {
         let id = self.new_filter(filter).await?;
         Ok(PollerBuilder::new(self.weak_client(), "eth_getFilterChanges", (id,)))
+    }
+
+    /// Watch for new logs using the given filter by polling the provider with
+    /// [`eth_getFilterChanges`](Self::get_filter_changes).
+    ///
+    /// Returns a builder that is used to configure the poller. See [`PollerBuilder`] for more
+    /// details.
+    ///
+    /// # Examples
+    ///
+    /// Get the next 5 USDC transfer logs:
+    ///
+    /// ```no_run
+    /// sol!(
+    ///     #[allow(missing_docs)]
+    ///     #[sol(abi)]
+    ///     USDC,
+    ///     "abi/USDC.json" // Path to contract ABI
+    /// );
+    ///
+    /// let config = IcpConfig::new(rpc_service).set_max_response_size(100_000);
+    /// let provider = ProviderBuilder::new().on_icp(config);
+    ///
+    /// // This callback will be called every time new logs are received
+    /// let callback = |incoming_logs: Vec<Log>| {
+    ///     for log in incoming_logs.iter() {
+    ///         let transfer: Log<USDC::Transfer> = log.log_decode().unwrap();
+    ///         let USDC::Transfer { from, to, value } = transfer.data();
+    ///         ic_cdk::println!("{from:?} -> {to:?}, value: {value:?}");
+    ///     }
+    /// };
+    ///
+    /// let usdt_token_address = address!("833589fcd6edb6e08f4c7c32d4f71b54bda02913");
+    /// let filter = Filter::new()
+    ///     .address(usdt_token_address)
+    ///     // By specifying an `event` or `event_signature` we listen for a specific event of the
+    ///     // contract. In this case the `Transfer(address,address,uint256)` event.
+    ///     .event(Transfer::SIGNATURE)
+    ///     .from_block(BlockNumberOrTag::Latest);
+    ///
+    /// // Initialize the poller and start watching
+    /// // `with_limit` (optional) is used to limit the number of times to poll, defaults to 3
+    /// // `with_poll_interval` (optional) is used to set the interval between polls, defaults to 7 seconds
+    /// let poller = provider.watch_logs(&filter).await.unwrap();
+    /// let timer_id = poller
+    ///     .with_limit(Some(POLL_LIMIT))
+    ///     .with_poll_interval(Duration::from_secs(10))
+    ///     .start(callback)
+    ///     .unwrap();
+    ///
+    /// ```
+    #[cfg(feature = "icp")]
+    async fn watch_logs(&self, filter: &Filter) -> TransportResult<FilterPollerBuilder<T, Log>> {
+        use alloy_rpc_client::IcpPollerBuilder;
+
+        let id = self.new_filter(filter).await?;
+        Ok(IcpPollerBuilder::new(self.weak_client(), "eth_getFilterChanges", (id,)))
     }
 
     /// Watch for new pending transaction bodies by polling the provider with
@@ -449,6 +558,7 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
     /// # Ok(())
     /// # }
     /// ```
+    #[cfg(not(feature = "icp"))]
     async fn watch_full_pending_transactions(
         &self,
     ) -> TransportResult<FilterPollerBuilder<T, N::TransactionResponse>> {
@@ -456,6 +566,24 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
         Ok(PollerBuilder::new(self.weak_client(), "eth_getFilterChanges", (id,)))
     }
 
+    /// Watch for new pending transaction bodies by polling the provider with
+    /// [`eth_getFilterChanges`](Self::get_filter_changes).
+    ///
+    /// Returns a builder that is used to configure the poller. See [`PollerBuilder`] for more
+    /// details.
+    ///
+    /// # Support
+    ///
+    /// This endpoint might not be supported by all clients.
+    ///
+    /// ```
+    #[cfg(feature = "icp")]
+    async fn watch_full_pending_transactions(
+        &self,
+    ) -> TransportResult<FilterPollerBuilder<T, N::TransactionResponse>> {
+        let id = self.new_pending_transactions_filter(true).await?;
+        Ok(IcpPollerBuilder::new(self.weak_client(), "eth_getFilterChanges", (id,)))
+    }
     /// Get a list of values that have been added since the last poll.
     ///
     /// The return value depends on what stream `id` corresponds to.
@@ -501,7 +629,7 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
         address: Address,
         keys: Vec<StorageKey>,
     ) -> RpcWithBlock<T, (Address, Vec<StorageKey>), EIP1186AccountProofResponse> {
-        self.client().request("eth_getProof", (address, keys)).into()
+        RpcWithBlock::new(self.weak_client(), "eth_getProof", (address, keys))
     }
 
     /// Gets the specified storage value from [Address].
@@ -510,15 +638,15 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
         address: Address,
         key: U256,
     ) -> RpcWithBlock<T, (Address, U256), StorageValue> {
-        self.client().request("eth_getStorageAt", (address, key)).into()
+        RpcWithBlock::new(self.weak_client(), "eth_getStorageAt", (address, key))
     }
 
     /// Gets a transaction by its [TxHash].
-    fn get_transaction_by_hash(
+    async fn get_transaction_by_hash(
         &self,
         hash: TxHash,
-    ) -> ProviderCall<T, (TxHash,), Option<N::TransactionResponse>> {
-        self.client().request("eth_getTransactionByHash", (hash,)).into()
+    ) -> TransportResult<Option<N::TransactionResponse>> {
+        self.client().request("eth_getTransactionByHash", (hash,)).await
     }
 
     /// Returns the EIP-2718 encoded transaction if it exists, see also
@@ -529,32 +657,24 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
     /// [TxEip4844](alloy_consensus::transaction::eip4844::TxEip4844).
     ///
     /// This can be decoded into [TxEnvelope](alloy_consensus::transaction::TxEnvelope).
-    fn get_raw_transaction_by_hash(
-        &self,
-        hash: TxHash,
-    ) -> ProviderCall<T, (TxHash,), Option<Bytes>> {
-        self.client().request("eth_getRawTransactionByHash", (hash,)).into()
+    async fn get_raw_transaction_by_hash(&self, hash: TxHash) -> TransportResult<Option<Bytes>> {
+        self.client().request("eth_getRawTransactionByHash", (hash,)).await
     }
 
     /// Gets the transaction count (AKA "nonce") of the corresponding address.
     #[doc(alias = "get_nonce")]
     #[doc(alias = "get_account_nonce")]
-    fn get_transaction_count(
-        &self,
-        address: Address,
-    ) -> RpcWithBlock<T, Address, U64, u64, fn(U64) -> u64> {
-        self.client()
-            .request("eth_getTransactionCount", address)
-            .map_resp(crate::utils::convert_u64 as fn(U64) -> u64)
-            .into()
+    fn get_transaction_count(&self, address: Address) -> RpcWithBlock<T, Address, U64, u64> {
+        RpcWithBlock::new(self.weak_client(), "eth_getTransactionCount", address)
+            .map_resp(crate::utils::convert_u64)
     }
 
     /// Gets a transaction receipt if it exists, by its [TxHash].
-    fn get_transaction_receipt(
+    async fn get_transaction_receipt(
         &self,
         hash: TxHash,
-    ) -> ProviderCall<T, (TxHash,), Option<N::ReceiptResponse>> {
-        self.client().request("eth_getTransactionReceipt", (hash,)).into()
+    ) -> TransportResult<Option<N::ReceiptResponse>> {
+        self.client().request("eth_getTransactionReceipt", (hash,)).await
     }
 
     /// Gets an uncle block through the tag [BlockId] and index [u64].
@@ -589,11 +709,11 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
     }
 
     /// Returns a suggestion for the current `maxPriorityFeePerGas` in wei.
-    fn get_max_priority_fee_per_gas(&self) -> ProviderCall<T, NoParams, U128, u128> {
+    async fn get_max_priority_fee_per_gas(&self) -> TransportResult<u128> {
         self.client()
             .request_noparams("eth_maxPriorityFeePerGas")
-            .map_resp(utils::convert_u128 as fn(U128) -> u128)
-            .into()
+            .await
+            .map(|fee: U128| fee.to::<u128>())
     }
 
     /// Notify the provider that we are interested in new blocks.
@@ -691,9 +811,15 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
         &self,
         tx: SendableTx<N>,
     ) -> TransportResult<PendingTransactionBuilder<'_, T, N>> {
-        // Make sure to initialize heartbeat before we submit transaction, so that
-        // we don't miss it if user will subscriber to it immediately after sending.
-        let _handle = self.root().get_heart();
+        // Heartbeat functionality is disabled for ICP, as it relies heavily on
+        // std::time that is not available. Plus, in a canister it is mostly
+        // not a good idea to keep the heartbeats running, as it will consume
+        // cycles and may risk the call hitting the instruction limit.
+        //
+        #[cfg(not(feature = "icp"))]
+        {
+            let _handle = self.root().get_heart();
+        }
 
         match tx {
             SendableTx::Builder(mut tx) => {
@@ -877,28 +1003,25 @@ pub trait Provider<T: Transport + Clone = BoxTransport, N: Network = Ethereum>:
     }
 
     /// Gets syncing info.
-    fn syncing(&self) -> ProviderCall<T, NoParams, SyncStatus> {
-        self.client().request_noparams("eth_syncing").into()
+    async fn syncing(&self) -> TransportResult<SyncStatus> {
+        self.client().request_noparams("eth_syncing").await
     }
 
     /// Gets the client version.
     #[doc(alias = "web3_client_version")]
-    fn get_client_version(&self) -> ProviderCall<T, NoParams, String> {
-        self.client().request_noparams("web3_clientVersion").into()
+    async fn get_client_version(&self) -> TransportResult<String> {
+        self.client().request_noparams("web3_clientVersion").await
     }
 
     /// Gets the `Keccak-256` hash of the given data.
     #[doc(alias = "web3_sha3")]
-    fn get_sha3(&self, data: &[u8]) -> ProviderCall<T, (String,), B256> {
-        self.client().request("web3_sha3", (hex::encode_prefixed(data),)).into()
+    async fn get_sha3(&self, data: &[u8]) -> TransportResult<B256> {
+        self.client().request("web3_sha3", (hex::encode_prefixed(data),)).await
     }
 
     /// Gets the network ID. Same as `eth_chainId`.
-    fn get_net_version(&self) -> ProviderCall<T, NoParams, U64, u64> {
-        self.client()
-            .request_noparams("net_version")
-            .map_resp(crate::utils::convert_u64 as fn(U64) -> u64)
-            .into()
+    fn get_net_version(&self) -> RpcCall<T, NoParams, U64, u64> {
+        self.client().request_noparams("net_version").map_resp(crate::utils::convert_u64)
     }
 
     /* ---------------------------------------- raw calls --------------------------------------- */
@@ -989,11 +1112,17 @@ impl<T: Transport + Clone, N: Network> Provider<T, N> for RootProvider<T, N> {
         self.inner.weak_client()
     }
 
+    #[allow(unreachable_code, unused_variables)]
     #[inline]
     async fn watch_pending_transaction(
         &self,
         config: PendingTransactionConfig,
     ) -> Result<PendingTransaction, PendingTransactionError> {
+        #[cfg(feature = "icp")]
+        {
+            panic!("watch_pending_transaction is not supported on ICP");
+        }
+
         let block_number =
             if let Some(receipt) = self.get_transaction_receipt(*config.tx_hash()).await? {
                 // The transaction is already confirmed.
@@ -1024,21 +1153,6 @@ mod tests {
     use alloy_node_bindings::Anvil;
     use alloy_primitives::{address, b256, bytes, keccak256};
     use alloy_rpc_types_eth::{request::TransactionRequest, Block};
-    // For layer transport tests
-    #[cfg(feature = "hyper")]
-    use alloy_transport_http::{
-        hyper,
-        hyper::body::Bytes as HyperBytes,
-        hyper_util::{
-            client::legacy::{Client, Error},
-            rt::TokioExecutor,
-        },
-        HyperResponse, HyperResponseFut,
-    };
-    #[cfg(feature = "hyper")]
-    use http_body_util::Full;
-    #[cfg(feature = "hyper")]
-    use tower::{Layer, Service};
 
     fn init_tracing() {
         let _ = tracing_subscriber::fmt::try_init();
@@ -1057,115 +1171,6 @@ mod tests {
     async fn test_builder_helper_fn() {
         init_tracing();
         let provider = builder().with_recommended_fillers().on_anvil();
-        let num = provider.get_block_number().await.unwrap();
-        assert_eq!(0, num);
-    }
-
-    #[cfg(feature = "hyper")]
-    #[tokio::test]
-    async fn test_default_hyper_transport() {
-        init_tracing();
-        let anvil = Anvil::new().spawn();
-        let hyper_t = alloy_transport_http::HyperTransport::new_hyper(anvil.endpoint_url());
-
-        let rpc_client = alloy_rpc_client::RpcClient::new(hyper_t, true);
-
-        let provider = RootProvider::<_, Ethereum>::new(rpc_client);
-        let num = provider.get_block_number().await.unwrap();
-        assert_eq!(0, num);
-    }
-
-    #[cfg(feature = "hyper")]
-    #[tokio::test]
-    async fn test_hyper_layer_transport() {
-        struct LoggingLayer;
-
-        impl<S> Layer<S> for LoggingLayer {
-            type Service = LoggingService<S>;
-
-            fn layer(&self, inner: S) -> Self::Service {
-                LoggingService { inner }
-            }
-        }
-
-        #[derive(Clone)] // required
-        struct LoggingService<S> {
-            inner: S,
-        }
-
-        impl<S, B> Service<hyper::Request<B>> for LoggingService<S>
-        where
-            S: Service<hyper::Request<B>, Response = HyperResponse, Error = Error>
-                + Clone
-                + Send
-                + Sync
-                + 'static,
-            S::Future: Send,
-            S::Error: std::error::Error + Send + Sync + 'static,
-            B: From<Vec<u8>> + Send + 'static + Clone + Sync + std::fmt::Debug,
-        {
-            type Response = HyperResponse;
-            type Error = Error;
-            type Future = HyperResponseFut;
-
-            fn poll_ready(
-                &mut self,
-                cx: &mut std::task::Context<'_>,
-            ) -> std::task::Poll<Result<(), Self::Error>> {
-                self.inner.poll_ready(cx)
-            }
-
-            fn call(&mut self, req: hyper::Request<B>) -> Self::Future {
-                println!("Logging Layer - HyperRequest {req:?}");
-
-                let fut = self.inner.call(req);
-
-                Box::pin(fut)
-            }
-        }
-        use http::header::{self, HeaderValue};
-        use tower_http::{
-            sensitive_headers::SetSensitiveRequestHeadersLayer, set_header::SetRequestHeaderLayer,
-        };
-        init_tracing();
-        let anvil = Anvil::new().spawn();
-        let hyper_client = Client::builder(TokioExecutor::new()).build_http::<Full<HyperBytes>>();
-
-        // Setup tower serive with multiple layers modifying request headers
-        let service = tower::ServiceBuilder::new()
-            .layer(SetRequestHeaderLayer::if_not_present(
-                header::USER_AGENT,
-                HeaderValue::from_static("alloy app"),
-            ))
-            .layer(SetRequestHeaderLayer::overriding(
-                header::AUTHORIZATION,
-                HeaderValue::from_static("some-jwt-token"),
-            ))
-            .layer(SetRequestHeaderLayer::appending(
-                header::SET_COOKIE,
-                HeaderValue::from_static("cookie-value"),
-            ))
-            .layer(SetSensitiveRequestHeadersLayer::new([header::AUTHORIZATION])) // Hides the jwt token as sensitive.
-            .layer(LoggingLayer)
-            .service(hyper_client);
-
-        let layer_transport = alloy_transport_http::HyperClient::with_service(service);
-
-        let http_hyper =
-            alloy_transport_http::Http::with_client(layer_transport, anvil.endpoint_url());
-
-        let rpc_client = alloy_rpc_client::RpcClient::new(http_hyper, true);
-
-        let provider = RootProvider::<_, Ethereum>::new(rpc_client);
-        let num = provider.get_block_number().await.unwrap();
-        assert_eq!(0, num);
-
-        // Test Cloning with service
-        let cloned_t = provider.client().transport().clone();
-
-        let rpc_client = alloy_rpc_client::RpcClient::new(cloned_t, true);
-
-        let provider = RootProvider::<_, Ethereum>::new(rpc_client);
         let num = provider.get_block_number().await.unwrap();
         assert_eq!(0, num);
     }
@@ -1394,35 +1399,14 @@ mod tests {
         assert_eq!(0, num.to::<u64>())
     }
 
-    #[cfg(feature = "anvil-api")]
     #[tokio::test]
     async fn gets_transaction_count() {
         init_tracing();
         let provider = ProviderBuilder::new().on_anvil();
-        let accounts = provider.get_accounts().await.unwrap();
-        let sender = accounts[0];
-
-        // Initial tx count should be 0
-        let count = provider.get_transaction_count(sender).await.unwrap();
-        assert_eq!(count, 0);
-
-        // Send Tx
-        let tx = TransactionRequest {
-            value: Some(U256::from(100)),
-            from: Some(sender),
-            to: Some(address!("d8dA6BF26964aF9D7eEd9e03E53415D37aA96045").into()),
-            gas_price: Some(20e9 as u128),
-            gas: Some(21000),
-            ..Default::default()
-        };
-        let _ = provider.send_transaction(tx).await.unwrap().get_receipt().await;
-
-        // Tx count should be 1
-        let count = provider.get_transaction_count(sender).await.unwrap();
-        assert_eq!(count, 1);
-
-        // Tx count should be 0 at block 0
-        let count = provider.get_transaction_count(sender).block_id(0.into()).await.unwrap();
+        let count = provider
+            .get_transaction_count(address!("328375e18E7db8F1CA9d9bA8bF3E9C94ee34136A"))
+            .await
+            .unwrap();
         assert_eq!(count, 0);
     }
 
@@ -1684,9 +1668,6 @@ mod tests {
             .with_input(bytes!("06fdde03")); // `name()`
         let result = provider.call(&req).await.unwrap();
         assert_eq!(String::abi_decode(&result, true).unwrap(), "Wrapped Ether");
-
-        let result = provider.call(&req).block(0.into()).await.unwrap();
-        assert_eq!(result.to_string(), "0x");
     }
 
     #[tokio::test]

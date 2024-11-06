@@ -23,10 +23,7 @@ mod error;
 pub use error::ConversionError;
 
 mod receipt;
-pub use receipt::TransactionReceipt;
-
-#[cfg(feature = "serde")]
-pub use receipt::AnyTransactionReceipt;
+pub use receipt::{AnyTransactionReceipt, TransactionReceipt};
 
 pub mod request;
 pub use request::{TransactionInput, TransactionRequest};

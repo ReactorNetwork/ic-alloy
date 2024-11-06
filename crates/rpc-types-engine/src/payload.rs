@@ -7,7 +7,7 @@ use alloc::{
 use alloy_consensus::{Blob, Bytes48};
 use alloy_eips::{
     eip4844::BlobTransactionSidecar, eip4895::Withdrawal, eip6110::DepositRequest,
-    eip7002::WithdrawalRequest, eip7251::ConsolidationRequest, BlockNumHash,
+    eip7002::WithdrawalRequest, eip7251::ConsolidationRequest,
 };
 use alloy_primitives::{Address, Bloom, Bytes, B256, B64, U256};
 use core::iter::{FromIterator, IntoIterator};
@@ -190,13 +190,6 @@ pub struct ExecutionPayloadV1 {
     pub block_hash: B256,
     /// The transactions of the block.
     pub transactions: Vec<Bytes>,
-}
-
-impl ExecutionPayloadV1 {
-    /// Returns the block number and hash as a [`BlockNumHash`].
-    pub const fn block_num_hash(&self) -> BlockNumHash {
-        BlockNumHash::new(self.block_number, self.block_hash)
-    }
 }
 
 /// This structure maps on the ExecutionPayloadV2 structure of the beacon chain spec.
@@ -483,118 +476,6 @@ impl ExecutionPayloadV4 {
     }
 }
 
-#[cfg(feature = "ssz")]
-impl ssz::Decode for ExecutionPayloadV4 {
-    fn is_ssz_fixed_len() -> bool {
-        false
-    }
-
-    fn from_ssz_bytes(bytes: &[u8]) -> Result<Self, ssz::DecodeError> {
-        let mut builder = ssz::SszDecoderBuilder::new(bytes);
-
-        builder.register_type::<B256>()?;
-        builder.register_type::<Address>()?;
-        builder.register_type::<B256>()?;
-        builder.register_type::<B256>()?;
-        builder.register_type::<Bloom>()?;
-        builder.register_type::<B256>()?;
-        builder.register_type::<u64>()?;
-        builder.register_type::<u64>()?;
-        builder.register_type::<u64>()?;
-        builder.register_type::<u64>()?;
-        builder.register_type::<Bytes>()?;
-        builder.register_type::<U256>()?;
-        builder.register_type::<B256>()?;
-        builder.register_type::<Vec<Bytes>>()?;
-        builder.register_type::<Vec<Withdrawal>>()?;
-        builder.register_type::<u64>()?;
-        builder.register_type::<u64>()?;
-        builder.register_type::<Vec<DepositRequest>>()?;
-        builder.register_type::<Vec<WithdrawalRequest>>()?;
-        builder.register_type::<Vec<ConsolidationRequest>>()?;
-
-        let mut decoder = builder.build()?;
-
-        Ok(Self {
-            payload_inner: ExecutionPayloadV3 {
-                payload_inner: ExecutionPayloadV2 {
-                    payload_inner: ExecutionPayloadV1 {
-                        parent_hash: decoder.decode_next()?,
-                        fee_recipient: decoder.decode_next()?,
-                        state_root: decoder.decode_next()?,
-                        receipts_root: decoder.decode_next()?,
-                        logs_bloom: decoder.decode_next()?,
-                        prev_randao: decoder.decode_next()?,
-                        block_number: decoder.decode_next()?,
-                        gas_limit: decoder.decode_next()?,
-                        gas_used: decoder.decode_next()?,
-                        timestamp: decoder.decode_next()?,
-                        extra_data: decoder.decode_next()?,
-                        base_fee_per_gas: decoder.decode_next()?,
-                        block_hash: decoder.decode_next()?,
-                        transactions: decoder.decode_next()?,
-                    },
-                    withdrawals: decoder.decode_next()?,
-                },
-                blob_gas_used: decoder.decode_next()?,
-                excess_blob_gas: decoder.decode_next()?,
-            },
-            deposit_requests: decoder.decode_next()?,
-            withdrawal_requests: decoder.decode_next()?,
-            consolidation_requests: decoder.decode_next()?,
-        })
-    }
-}
-
-#[cfg(feature = "ssz")]
-impl ssz::Encode for ExecutionPayloadV4 {
-    fn is_ssz_fixed_len() -> bool {
-        false
-    }
-
-    fn ssz_append(&self, buf: &mut Vec<u8>) {
-        let offset = <B256 as ssz::Encode>::ssz_fixed_len() * 5
-            + <Address as ssz::Encode>::ssz_fixed_len()
-            + <Bloom as ssz::Encode>::ssz_fixed_len()
-            + <u64 as ssz::Encode>::ssz_fixed_len() * 6
-            + <U256 as ssz::Encode>::ssz_fixed_len()
-            + ssz::BYTES_PER_LENGTH_OFFSET * 6;
-
-        let mut encoder = ssz::SszEncoder::container(buf, offset);
-
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.parent_hash);
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.fee_recipient);
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.state_root);
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.receipts_root);
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.logs_bloom);
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.prev_randao);
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.block_number);
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.gas_limit);
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.gas_used);
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.timestamp);
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.extra_data);
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.base_fee_per_gas);
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.block_hash);
-        encoder.append(&self.payload_inner.payload_inner.payload_inner.transactions);
-        encoder.append(&self.payload_inner.payload_inner.withdrawals);
-        encoder.append(&self.payload_inner.blob_gas_used);
-        encoder.append(&self.payload_inner.excess_blob_gas);
-        encoder.append(&self.deposit_requests);
-        encoder.append(&self.withdrawal_requests);
-        encoder.append(&self.consolidation_requests);
-
-        encoder.finalize();
-    }
-
-    fn ssz_bytes_len(&self) -> usize {
-        <ExecutionPayloadV3 as ssz::Encode>::ssz_bytes_len(&self.payload_inner)
-            + ssz::BYTES_PER_LENGTH_OFFSET * 3
-            + self.deposit_requests.ssz_bytes_len()
-            + self.withdrawal_requests.ssz_bytes_len()
-            + self.consolidation_requests.ssz_bytes_len()
-    }
-}
-
 /// This includes all bundled blob related data of an executed payload.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -848,11 +729,6 @@ impl ExecutionPayload {
     /// Returns the block number for this payload.
     pub const fn block_number(&self) -> u64 {
         self.as_v1().block_number
-    }
-
-    /// Returns the block number for this payload.
-    pub const fn block_num_hash(&self) -> BlockNumHash {
-        self.as_v1().block_num_hash()
     }
 
     /// Returns the prev randao for this payload.

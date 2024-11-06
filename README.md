@@ -1,3 +1,10 @@
+> [!IMPORTANT]
+> This is a fork of the original `alloy` repository that adds support for the [Internet Computer](https://internetcomputer.org) (ICP). The original repository can be found [here](https://github.com/alloy-rs).
+>
+> See [ICP Notes](#icp-notes) for more information.
+>
+> For demos and documentation on how to use the ICP adaption of Alloy, see <https://github.com/ic-alloy>
+
 # Alloy
 
 Alloy connects applications to blockchains.
@@ -66,9 +73,11 @@ This repository contains the following crates:
   - [`alloy-signer-ledger`] - [Ledger] signer implementation
   - [`alloy-signer-local`] - Local (private key, keystore, mnemonic, YubiHSM) signer implementations
   - [`alloy-signer-trezor`] - [Trezor] signer implementation
+  - [`alloy-signer-icp`] - ICP signer implementation
 - [`alloy-transport`] - Low-level Ethereum JSON-RPC transport abstraction
   - [`alloy-transport-http`] - HTTP transport implementation
   - [`alloy-transport-ipc`] - IPC transport implementation
+  - [`alloy-transport-icp`] - ICP transport implementation
   - [`alloy-transport-ws`] - WS transport implementation
 
 [`alloy`]: https://github.com/alloy-rs/alloy/tree/main/crates/alloy
@@ -101,11 +110,12 @@ This repository contains the following crates:
 [`alloy-signer-ledger`]: https://github.com/alloy-rs/alloy/tree/main/crates/signer-ledger
 [`alloy-signer-local`]: https://github.com/alloy-rs/alloy/tree/main/crates/signer-local
 [`alloy-signer-trezor`]: https://github.com/alloy-rs/alloy/tree/main/crates/signer-trezor
+[`alloy-signer-icp`]: https://github.com/kristoferlund/ic-alloy/tree/main/crates/signer-icp
 [`alloy-transport`]: https://github.com/alloy-rs/alloy/tree/main/crates/transport
 [`alloy-transport-http`]: https://github.com/alloy-rs/alloy/tree/main/crates/transport-http
 [`alloy-transport-ipc`]: https://github.com/alloy-rs/alloy/tree/main/crates/transport-ipc
+[`alloy-transport-icp`]: https://github.com/kristoferlund/ic-alloy/tree/main/crates/transport-icp
 [`alloy-transport-ws`]: https://github.com/alloy-rs/alloy/tree/main/crates/transport-ws
-
 [publish-subscribe]: https://en.wikipedia.org/wiki/Publish%E2%80%93subscribe_pattern
 [AWS KMS]: https://aws.amazon.com/kms
 [GCP KMS]: https://cloud.google.com/kms
@@ -132,6 +142,58 @@ support 1.56).
 
 Note that the MSRV is not increased automatically, and only as part of a patch
 (pre-1.0) or minor (post-1.0) release.
+
+## ICP Notes
+
+Smart contracts on ICP can directly interact with the Ethereum network and other networks that are using the Ethereum Virtual Machine (EVM), such as Polygon and Avalanche. This integration is possible thanks to ICP's HTTPS outcalls and threshold ECDSA features, which allow Ethereum transactions to be queried and ICP smart contracts to sign and submit transactions to Ethereum.
+
+### ICP Packages added to Alloy
+
+#### [`transport-icp`](crates/transport-icp)
+
+Adds ICP as a Alloy transport layer, routing requests through the IC EVM RPC canister or an external RPC proxy.
+
+The ICP transport uses [HTTPS outcalls](https://internetcomputer.org/https-outcalls) to query information from Ethereum and other EVM networks.
+
+#### [`signer-icp`](crates/signer-icp)
+
+Abstracts away the complexity of signing messages and transactions on ICP.
+
+The ICP signer uses [Threshold ECDSA](https://internetcomputer.org/docs/current/developer-docs/smart-contracts/signatures/t-ecdsa) allowing the canister to create signaturs in a secure and decentralised way.
+
+### Alloy packages modified
+
+#### [`provider`](crates/provider)
+
+- Adds the `on_icp()` function to build a provider using an `IcpTransport` with the given `IcpConfig`.
+- Adapts the `watch_x` functions to work with the ICP poller.
+- `watch_pending_transactions` is not available on ICP as it relies on heartbeat functionality not yet implemented
+
+#### [`rpc-client`](crates/rpc-client)
+
+- Adds the `icp()` function to the `ClientBuilder`, a convenience function to create a new `RpcClient` with an `IcpTransport` using the given `IcpConfig` details.
+- Adapts the `new_batch()` function to support `IcpTransport` for batch requests.
+- Adds the `IcpPollerBuilder` used for watching for logs, transactions and blocks. The ICP poller relies on [IC timers](https://internetcomputer.org/docs/current/developer-docs/smart-contracts/advanced-features/periodic-tasks/#timers) for continuously listening to events.
+- Adds the `IcpClient` type that maps to `IcpTransport`
+  - `pub type IcpClient = RpcClient<alloy_transport_icp::IcpTransport>;`
+
+### ICP Alloy Installation
+
+To use the ICP enabled fork in your project, add this to `Cargo.toml`:
+
+```toml
+alloy = { git = "https://github.com/kristoferlund/ic-alloy.git", default-features = false, features = ["icp"]}
+```
+
+To use the `sol!()` macro, add the following crate features:
+
+- `sol-types`
+- `json`
+- `contract`
+
+### Additional notes for the ICP fork
+
+- The subscription features of Alloy are not supported. To subscribe to logs or blocks, instead use [watch and poll](https://alloy.rs/examples/subscriptions/poll_logs.html).
 
 ## Contributing
 

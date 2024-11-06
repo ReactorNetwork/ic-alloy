@@ -4,8 +4,7 @@ use alloy_json_rpc::{
     RpcReturn, SerializedRequest,
 };
 use alloy_transport::{Transport, TransportError, TransportErrorKind, TransportResult};
-use futures::FutureExt;
-use pin_project::pin_project;
+use futures::channel::oneshot;
 use serde_json::value::RawValue;
 use std::{
     borrow::Cow,
@@ -13,12 +12,8 @@ use std::{
     future::{Future, IntoFuture},
     marker::PhantomData,
     pin::Pin,
-    task::{
-        self, ready,
-        Poll::{self, Ready},
-    },
+    task::{self, ready, Poll},
 };
-use tokio::sync::oneshot;
 
 pub(crate) type Channel = oneshot::Sender<TransportResult<Box<RawValue>>>;
 pub(crate) type ChannelMap = HashMap<Id, Channel>;
@@ -40,58 +35,29 @@ pub struct BatchRequest<'a, T> {
 
 /// Awaits a single response for a request that has been included in a batch.
 #[must_use = "A Waiter does nothing unless the corresponding BatchRequest is sent via `send_batch` and `.await`, AND the Waiter is awaited."]
-#[pin_project]
 #[derive(Debug)]
-pub struct Waiter<Resp, Output = Resp, Map = fn(Resp) -> Output> {
-    #[pin]
+pub struct Waiter<Resp> {
     rx: oneshot::Receiver<TransportResult<Box<RawValue>>>,
-    map: Option<Map>,
-    _resp: PhantomData<fn() -> (Output, Resp)>,
-}
-
-impl<Resp, Output, Map> Waiter<Resp, Output, Map> {
-    /// Map the response to a different type. This is usable for converting
-    /// the response to a more usable type, e.g. changing `U64` to `u64`.
-    ///
-    /// ## Note
-    ///
-    /// Carefully review the rust documentation on [fn pointers] before passing
-    /// them to this function. Unless the pointer is specifically coerced to a
-    /// `fn(_) -> _`, the `NewMap` will be inferred as that function's unique
-    /// type. This can lead to confusing error messages.
-    ///
-    /// [fn pointers]: https://doc.rust-lang.org/std/primitive.fn.html#creating-function-pointers
-    pub fn map_resp<NewOutput, NewMap>(self, map: NewMap) -> Waiter<Resp, NewOutput, NewMap>
-    where
-        NewMap: FnOnce(Resp) -> NewOutput,
-    {
-        Waiter { rx: self.rx, map: Some(map), _resp: PhantomData }
-    }
+    _resp: PhantomData<fn() -> Resp>,
 }
 
 impl<Resp> From<oneshot::Receiver<TransportResult<Box<RawValue>>>> for Waiter<Resp> {
     fn from(rx: oneshot::Receiver<TransportResult<Box<RawValue>>>) -> Self {
-        Self { rx, map: Some(std::convert::identity), _resp: PhantomData }
+        Self { rx, _resp: PhantomData }
     }
 }
 
-impl<Resp, Output, Map> std::future::Future for Waiter<Resp, Output, Map>
+impl<Resp> std::future::Future for Waiter<Resp>
 where
     Resp: RpcReturn,
-    Map: FnOnce(Resp) -> Output,
 {
-    type Output = TransportResult<Output>;
+    type Output = TransportResult<Resp>;
 
-    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
-
-        match ready!(this.rx.poll_unpin(cx)) {
-            Ok(resp) => {
-                let resp: Result<Resp, _> = try_deserialize_ok(resp);
-                Ready(resp.map(this.map.take().expect("polled after completion")))
-            }
-            Err(e) => Poll::Ready(Err(TransportErrorKind::custom(e))),
-        }
+    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.rx).poll(cx).map(|resp| match resp {
+            Ok(resp) => try_deserialize_ok(resp),
+            Err(e) => Err(TransportErrorKind::custom(e)),
+        })
     }
 }
 
@@ -207,8 +173,7 @@ where
 
         let fut = transport.call(req);
         self.set(Self::AwaitingResponse { channels, fut });
-        cx.waker().wake_by_ref();
-        Poll::Pending
+        self.poll(cx)
     }
 
     fn poll_awaiting_response(

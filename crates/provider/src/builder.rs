@@ -1,7 +1,7 @@
 use crate::{
     fillers::{
         CachedNonceManager, ChainIdFiller, FillerControlFlow, GasFiller, JoinFill, NonceFiller,
-        NonceManager, RecommendedFillers, SimpleNonceManager, TxFiller, WalletFiller,
+        NonceManager, RecommendedFiller, SimpleNonceManager, TxFiller, WalletFiller,
     },
     provider::SendableTx,
     Provider, RootProvider,
@@ -130,13 +130,8 @@ impl<N> Default for ProviderBuilder<Identity, Identity, N> {
 impl<L, N> ProviderBuilder<L, Identity, N> {
     /// Add preconfigured set of layers handling gas estimation, nonce
     /// management, and chain-id fetching.
-    pub fn with_recommended_fillers(
-        self,
-    ) -> ProviderBuilder<L, JoinFill<Identity, N::RecomendedFillters>, N>
-    where
-        N: RecommendedFillers,
-    {
-        self.filler(N::recommended_fillers())
+    pub fn with_recommended_fillers(self) -> ProviderBuilder<L, RecommendedFiller, N> {
+        self.filler(GasFiller).filler(NonceFiller::default()).filler(ChainIdFiller::default())
     }
 
     /// Add gas estimation to the stack being built.
@@ -350,12 +345,36 @@ impl<L, F, N> ProviderBuilder<L, F, N> {
         self.on_client(client)
     }
 
+    /// Build this provider using an [`IcpTransport`] with the given [`IcpConfig`].
+    ///
+    /// [`IcpTransport`]: alloy_transport_icp::IcpTransport
+    /// [`IcpConfig`]: alloy_transport_icp::IcpConfig
+    #[cfg(any(test, feature = "icp"))]
+    pub fn on_icp(self, config: alloy_transport_icp::IcpConfig) -> F::Provider
+    where
+        L: ProviderLayer<crate::IcpProvider<N>, alloy_transport_icp::IcpTransport, N>,
+        F: TxFiller<N> + ProviderLayer<L::Provider, alloy_transport_icp::IcpTransport, N>,
+        N: Network,
+    {
+        let client = ClientBuilder::default().icp(config);
+        self.on_client(client)
+    }
+
     /// Build this provider with an Hyper HTTP transport.
     #[cfg(feature = "hyper")]
     pub fn on_hyper_http(self, url: url::Url) -> F::Provider
     where
-        L: ProviderLayer<crate::HyperProvider<N>, alloy_transport_http::HyperTransport, N>,
-        F: TxFiller<N> + ProviderLayer<L::Provider, alloy_transport_http::HyperTransport, N>,
+        L: ProviderLayer<
+            crate::HyperProvider<N>,
+            alloy_transport_http::Http<alloy_transport_http::HyperClient>,
+            N,
+        >,
+        F: TxFiller<N>
+            + ProviderLayer<
+                L::Provider,
+                alloy_transport_http::Http<alloy_transport_http::HyperClient>,
+                N,
+            >,
         N: Network,
     {
         let client = ClientBuilder::default().hyper_http(url);
