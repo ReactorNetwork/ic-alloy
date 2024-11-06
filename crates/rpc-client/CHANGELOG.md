@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.5-icp.0 - 2024-11-06
+
+### Added
+
+- Adds the `icp()` function to the `ClientBuilder`, a convenience function to create a new `RpcClient` with an `IcpTransport` using the given `IcpConfig` details.
+- Adapts the `new_batch()` function to support `IcpTransport` for batch requests.
+- Adds the `IcpPollerBuilder` used for watching for logs, transactions and blocks. The ICP poller relies on [IC timers](https://internetcomputer.org/docs/current/developer-docs/smart-contracts/advanced-features/periodic-tasks/#timers) for continuously listening to events.
+- Adds the `IcpClient` type that maps to `IcpTransport`
+  - `pub type IcpClient = RpcClient<alloy_transport_icp::IcpTransport>;`
+
 ## [0.3.4](https://github.com/alloy-rs/alloy/releases/tag/v0.3.4) - 2024-09-13
 
 ### Features
@@ -43,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - [provider] Serialize no parameters as `[]` instead of `null` ([#1193](https://github.com/alloy-rs/alloy/issues/1193))
 - Use `server_id` when unsubscribing ([#1182](https://github.com/alloy-rs/alloy/issues/1182))
-- Use `BlockId` superset over `BlockNumberOrTag` where applicable  ([#1135](https://github.com/alloy-rs/alloy/issues/1135))
+- Use `BlockId` superset over `BlockNumberOrTag` where applicable ([#1135](https://github.com/alloy-rs/alloy/issues/1135))
 
 ### Features
 
@@ -122,7 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Miscellaneous Tasks
 
-- [other] Use type aliases where possible to improve clarity  ([#859](https://github.com/alloy-rs/alloy/issues/859))
+- [other] Use type aliases where possible to improve clarity ([#859](https://github.com/alloy-rs/alloy/issues/859))
 - [general] Add CI workflow for Windows + fix IPC test ([#642](https://github.com/alloy-rs/alloy/issues/642))
 - Rm PathBuf import ([#533](https://github.com/alloy-rs/alloy/issues/533))
 - Simplify some RpcCall code ([#470](https://github.com/alloy-rs/alloy/issues/470))
@@ -141,7 +151,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Refactor] Delete the internal-test-utils crate ([#632](https://github.com/alloy-rs/alloy/issues/632))
 - Configure polling interval ([#437](https://github.com/alloy-rs/alloy/issues/437))
 - Removed reqwest prefix ([#462](https://github.com/alloy-rs/alloy/issues/462))
-- Adds `check -Zcheck-cfg ` job ([#419](https://github.com/alloy-rs/alloy/issues/419))
+- Adds `check -Zcheck-cfg` job ([#419](https://github.com/alloy-rs/alloy/issues/419))
 - ClientRefs, Poller, and Streams ([#179](https://github.com/alloy-rs/alloy/issues/179))
 - Various Subscription improvements ([#177](https://github.com/alloy-rs/alloy/issues/177))
 - Merge pull request [#21](https://github.com/alloy-rs/alloy/issues/21) from alloy-rs/prestwich/new-pubsub
@@ -165,65 +175,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clean up fmt::Debug impls ([#75](https://github.com/alloy-rs/alloy/issues/75))
 - Sync with core ([#27](https://github.com/alloy-rs/alloy/issues/27))
 
-[`alloy`]: https://crates.io/crates/alloy
-[alloy]: https://crates.io/crates/alloy
-[`alloy-core`]: https://crates.io/crates/alloy-core
-[alloy-core]: https://crates.io/crates/alloy-core
-[`alloy-consensus`]: https://crates.io/crates/alloy-consensus
-[alloy-consensus]: https://crates.io/crates/alloy-consensus
-[`alloy-contract`]: https://crates.io/crates/alloy-contract
-[alloy-contract]: https://crates.io/crates/alloy-contract
-[`alloy-eips`]: https://crates.io/crates/alloy-eips
-[alloy-eips]: https://crates.io/crates/alloy-eips
-[`alloy-genesis`]: https://crates.io/crates/alloy-genesis
-[alloy-genesis]: https://crates.io/crates/alloy-genesis
-[`alloy-json-rpc`]: https://crates.io/crates/alloy-json-rpc
-[alloy-json-rpc]: https://crates.io/crates/alloy-json-rpc
-[`alloy-network`]: https://crates.io/crates/alloy-network
-[alloy-network]: https://crates.io/crates/alloy-network
-[`alloy-node-bindings`]: https://crates.io/crates/alloy-node-bindings
-[alloy-node-bindings]: https://crates.io/crates/alloy-node-bindings
-[`alloy-provider`]: https://crates.io/crates/alloy-provider
-[alloy-provider]: https://crates.io/crates/alloy-provider
-[`alloy-pubsub`]: https://crates.io/crates/alloy-pubsub
-[alloy-pubsub]: https://crates.io/crates/alloy-pubsub
-[`alloy-rpc-client`]: https://crates.io/crates/alloy-rpc-client
-[alloy-rpc-client]: https://crates.io/crates/alloy-rpc-client
-[`alloy-rpc-types`]: https://crates.io/crates/alloy-rpc-types
-[alloy-rpc-types]: https://crates.io/crates/alloy-rpc-types
-[`alloy-rpc-types-anvil`]: https://crates.io/crates/alloy-rpc-types-anvil
-[alloy-rpc-types-anvil]: https://crates.io/crates/alloy-rpc-types-anvil
-[`alloy-rpc-types-beacon`]: https://crates.io/crates/alloy-rpc-types-beacon
-[alloy-rpc-types-beacon]: https://crates.io/crates/alloy-rpc-types-beacon
-[`alloy-rpc-types-engine`]: https://crates.io/crates/alloy-rpc-types-engine
-[alloy-rpc-types-engine]: https://crates.io/crates/alloy-rpc-types-engine
-[`alloy-rpc-types-eth`]: https://crates.io/crates/alloy-rpc-types-eth
-[alloy-rpc-types-eth]: https://crates.io/crates/alloy-rpc-types-eth
-[`alloy-rpc-types-trace`]: https://crates.io/crates/alloy-rpc-types-trace
-[alloy-rpc-types-trace]: https://crates.io/crates/alloy-rpc-types-trace
-[`alloy-serde`]: https://crates.io/crates/alloy-serde
-[alloy-serde]: https://crates.io/crates/alloy-serde
-[`alloy-signer`]: https://crates.io/crates/alloy-signer
-[alloy-signer]: https://crates.io/crates/alloy-signer
-[`alloy-signer-aws`]: https://crates.io/crates/alloy-signer-aws
-[alloy-signer-aws]: https://crates.io/crates/alloy-signer-aws
-[`alloy-signer-gcp`]: https://crates.io/crates/alloy-signer-gcp
-[alloy-signer-gcp]: https://crates.io/crates/alloy-signer-gcp
-[`alloy-signer-ledger`]: https://crates.io/crates/alloy-signer-ledger
-[alloy-signer-ledger]: https://crates.io/crates/alloy-signer-ledger
-[`alloy-signer-local`]: https://crates.io/crates/alloy-signer-local
-[alloy-signer-local]: https://crates.io/crates/alloy-signer-local
-[`alloy-signer-trezor`]: https://crates.io/crates/alloy-signer-trezor
-[alloy-signer-trezor]: https://crates.io/crates/alloy-signer-trezor
-[`alloy-signer-wallet`]: https://crates.io/crates/alloy-signer-wallet
-[alloy-signer-wallet]: https://crates.io/crates/alloy-signer-wallet
-[`alloy-transport`]: https://crates.io/crates/alloy-transport
-[alloy-transport]: https://crates.io/crates/alloy-transport
-[`alloy-transport-http`]: https://crates.io/crates/alloy-transport-http
-[alloy-transport-http]: https://crates.io/crates/alloy-transport-http
-[`alloy-transport-ipc`]: https://crates.io/crates/alloy-transport-ipc
-[alloy-transport-ipc]: https://crates.io/crates/alloy-transport-ipc
-[`alloy-transport-ws`]: https://crates.io/crates/alloy-transport-ws
-[alloy-transport-ws]: https://crates.io/crates/alloy-transport-ws
 
 <!-- generated by git-cliff -->

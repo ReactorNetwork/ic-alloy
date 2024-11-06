@@ -182,7 +182,7 @@ The ICP signer uses [Threshold ECDSA](https://internetcomputer.org/docs/current/
 To use the ICP enabled fork in your project, add this to `Cargo.toml`:
 
 ```toml
-alloy = { git = "https://github.com/kristoferlund/ic-alloy.git", default-features = false, features = ["icp"]}
+alloy = { git = "https://github.com/kristoferlund/ic-alloy.git", tag = "v0.3.5-icp.0", default-features = false, features = ["icp"]}
 ```
 
 To use the `sol!()` macro, add the following crate features:

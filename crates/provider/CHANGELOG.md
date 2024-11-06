@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.5-icp.0
+
+### Added
+
+- Adds the `on_icp()` function to build a provider using an `IcpTransport` with the given `IcpConfig`.
+- Adapts the `watch_x` functions to work with the ICP poller.
+- `watch_pending_transactions` is not available on ICP as it relies on heartbeat functionality not yet implemented
+
 ## [0.3.4](https://github.com/alloy-rs/alloy/releases/tag/v0.3.4) - 2024-09-13
 
 ### Bug Fixes
@@ -52,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [provider] Serialize no parameters as `[]` instead of `null` ([#1193](https://github.com/alloy-rs/alloy/issues/1193))
 - Use `server_id` when unsubscribing ([#1182](https://github.com/alloy-rs/alloy/issues/1182))
 - Return more user-friendly error on tx timeout ([#1145](https://github.com/alloy-rs/alloy/issues/1145))
-- Use `BlockId` superset over `BlockNumberOrTag` where applicable  ([#1135](https://github.com/alloy-rs/alloy/issues/1135))
+- Use `BlockId` superset over `BlockNumberOrTag` where applicable ([#1135](https://github.com/alloy-rs/alloy/issues/1135))
 - [provider] Prevent panic from having 0 keys when calling `on_anvil_with_wallet_and_config` ([#1055](https://github.com/alloy-rs/alloy/issues/1055))
 - [provider] Do not overflow LRU cache capacity in ChainStreamPoller ([#1052](https://github.com/alloy-rs/alloy/issues/1052))
 - [admin] Id in NodeInfo is string instead of B256 ([#1038](https://github.com/alloy-rs/alloy/issues/1038))
@@ -97,11 +105,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 
-- Add missing admin_* methods ([#991](https://github.com/alloy-rs/alloy/issues/991))
+- Add missing admin\_\* methods ([#991](https://github.com/alloy-rs/alloy/issues/991))
 - Support web3_sha3 provider function ([#996](https://github.com/alloy-rs/alloy/issues/996))
 - Add trace_get ([#987](https://github.com/alloy-rs/alloy/issues/987))
 - Add net rpc namespace ([#989](https://github.com/alloy-rs/alloy/issues/989))
-- Add missing debug_* rpc methods ([#986](https://github.com/alloy-rs/alloy/issues/986))
+- Add missing debug\_\* rpc methods ([#986](https://github.com/alloy-rs/alloy/issues/986))
 
 ### Miscellaneous Tasks
 
@@ -171,7 +179,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Correctly treat `confirmation` for `watch_pending_transaction` ([#381](https://github.com/alloy-rs/alloy/issues/381))
 - Remove app-layer usage of transport error ([#363](https://github.com/alloy-rs/alloy/issues/363))
 - [provider] 0x prefix in sendRawTransaction ([#369](https://github.com/alloy-rs/alloy/issues/369))
-- Change nonce from `U64` to `u64`  ([#341](https://github.com/alloy-rs/alloy/issues/341))
+- Change nonce from `U64` to `u64` ([#341](https://github.com/alloy-rs/alloy/issues/341))
 - Make `TransactionReceipt::transaction_hash` field mandatory ([#337](https://github.com/alloy-rs/alloy/issues/337))
 - Fix subscribe blocks ([#330](https://github.com/alloy-rs/alloy/issues/330))
 
@@ -200,7 +208,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Set poll interval based on connected chain ([#767](https://github.com/alloy-rs/alloy/issues/767))
 - Block id convenience functions ([#757](https://github.com/alloy-rs/alloy/issues/757))
 - Add `EngineApi` extension trait ([#676](https://github.com/alloy-rs/alloy/issues/676))
-- Eth_call builder  ([#645](https://github.com/alloy-rs/alloy/issues/645))
+- Eth_call builder ([#645](https://github.com/alloy-rs/alloy/issues/645))
 - AnvilProvider ([#611](https://github.com/alloy-rs/alloy/issues/611))
 - Allow to only fill a transaction request ([#590](https://github.com/alloy-rs/alloy/issues/590))
 - WalletProvider ([#569](https://github.com/alloy-rs/alloy/issues/569))
@@ -210,12 +218,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [provider] Get_uncle_count ([#524](https://github.com/alloy-rs/alloy/issues/524))
 - Joinable transaction fillers ([#426](https://github.com/alloy-rs/alloy/issues/426))
 - `std` feature flag for `alloy-consensus` ([#461](https://github.com/alloy-rs/alloy/issues/461))
-- Rename alloy-rpc-*-types to alloy-rpc-types-* ([#435](https://github.com/alloy-rs/alloy/issues/435))
+- Rename alloy-rpc-_-types to alloy-rpc-types-_ ([#435](https://github.com/alloy-rs/alloy/issues/435))
 - Improve and complete `alloy` prelude crate feature flag compatiblity ([#421](https://github.com/alloy-rs/alloy/issues/421))
 - Default to Ethereum network in `alloy-provider` and `alloy-contract` ([#356](https://github.com/alloy-rs/alloy/issues/356))
 - Embed primitives Log in rpc Log and consensus Receipt in rpc Receipt ([#396](https://github.com/alloy-rs/alloy/issues/396))
 - Make HTTP provider optional ([#379](https://github.com/alloy-rs/alloy/issues/379))
-- Implement `admin_trait`  ([#405](https://github.com/alloy-rs/alloy/issues/405))
+- Implement `admin_trait` ([#405](https://github.com/alloy-rs/alloy/issues/405))
 - Handle 4844 fee ([#412](https://github.com/alloy-rs/alloy/issues/412))
 - [providers] Connect_boxed api ([#342](https://github.com/alloy-rs/alloy/issues/342))
 - Convenience functions for nonce and gas on `ProviderBuilder` ([#378](https://github.com/alloy-rs/alloy/issues/378))
@@ -234,7 +242,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Miscellaneous Tasks
 
 - [clippy] Apply lint suggestions ([#903](https://github.com/alloy-rs/alloy/issues/903))
-- [other] Use type aliases where possible to improve clarity  ([#859](https://github.com/alloy-rs/alloy/issues/859))
+- [other] Use type aliases where possible to improve clarity ([#859](https://github.com/alloy-rs/alloy/issues/859))
 - [provider] Reorder methods in `Provider` trait ([#863](https://github.com/alloy-rs/alloy/issues/863))
 - [provider] Document privileged status of EIP-1559 ([#850](https://github.com/alloy-rs/alloy/issues/850))
 - [docs] Crate completeness and fix typos ([#861](https://github.com/alloy-rs/alloy/issues/861))
@@ -265,7 +273,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extension ([#474](https://github.com/alloy-rs/alloy/issues/474))
 - Removed reqwest prefix ([#462](https://github.com/alloy-rs/alloy/issues/462))
 - Numeric type audit: network, consensus, provider, rpc-types ([#454](https://github.com/alloy-rs/alloy/issues/454))
-- Adds `check -Zcheck-cfg ` job ([#419](https://github.com/alloy-rs/alloy/issues/419))
+- Adds `check -Zcheck-cfg` job ([#419](https://github.com/alloy-rs/alloy/issues/419))
 - Use latest stable
 - Rename `alloy-providers` to `alloy-provider` ([#278](https://github.com/alloy-rs/alloy/issues/278))
 - Merge pull request [#3](https://github.com/alloy-rs/alloy/issues/3) from alloy-rs/prestwich/readme-and-cleanup
@@ -279,7 +287,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Refactor
 
 - [rpc] Extract `admin` and `txpool` into their respective crate ([#898](https://github.com/alloy-rs/alloy/issues/898))
-- [signers] Use `signer` for single credentials and `wallet` for credential stores  ([#883](https://github.com/alloy-rs/alloy/issues/883))
+- [signers] Use `signer` for single credentials and `wallet` for credential stores ([#883](https://github.com/alloy-rs/alloy/issues/883))
 - Improve eth_call internals ([#763](https://github.com/alloy-rs/alloy/issues/763))
 - Change u64 to Duration ([#636](https://github.com/alloy-rs/alloy/issues/636))
 - Make optional BlockId params required in provider functions ([#516](https://github.com/alloy-rs/alloy/issues/516))
@@ -297,65 +305,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add rand feature in providers ([#910](https://github.com/alloy-rs/alloy/issues/910))
 
-[`alloy`]: https://crates.io/crates/alloy
 [alloy]: https://crates.io/crates/alloy
-[`alloy-core`]: https://crates.io/crates/alloy-core
-[alloy-core]: https://crates.io/crates/alloy-core
-[`alloy-consensus`]: https://crates.io/crates/alloy-consensus
-[alloy-consensus]: https://crates.io/crates/alloy-consensus
-[`alloy-contract`]: https://crates.io/crates/alloy-contract
-[alloy-contract]: https://crates.io/crates/alloy-contract
-[`alloy-eips`]: https://crates.io/crates/alloy-eips
-[alloy-eips]: https://crates.io/crates/alloy-eips
-[`alloy-genesis`]: https://crates.io/crates/alloy-genesis
-[alloy-genesis]: https://crates.io/crates/alloy-genesis
-[`alloy-json-rpc`]: https://crates.io/crates/alloy-json-rpc
-[alloy-json-rpc]: https://crates.io/crates/alloy-json-rpc
-[`alloy-network`]: https://crates.io/crates/alloy-network
-[alloy-network]: https://crates.io/crates/alloy-network
-[`alloy-node-bindings`]: https://crates.io/crates/alloy-node-bindings
-[alloy-node-bindings]: https://crates.io/crates/alloy-node-bindings
-[`alloy-provider`]: https://crates.io/crates/alloy-provider
 [alloy-provider]: https://crates.io/crates/alloy-provider
-[`alloy-pubsub`]: https://crates.io/crates/alloy-pubsub
-[alloy-pubsub]: https://crates.io/crates/alloy-pubsub
-[`alloy-rpc-client`]: https://crates.io/crates/alloy-rpc-client
-[alloy-rpc-client]: https://crates.io/crates/alloy-rpc-client
-[`alloy-rpc-types`]: https://crates.io/crates/alloy-rpc-types
-[alloy-rpc-types]: https://crates.io/crates/alloy-rpc-types
-[`alloy-rpc-types-anvil`]: https://crates.io/crates/alloy-rpc-types-anvil
-[alloy-rpc-types-anvil]: https://crates.io/crates/alloy-rpc-types-anvil
-[`alloy-rpc-types-beacon`]: https://crates.io/crates/alloy-rpc-types-beacon
-[alloy-rpc-types-beacon]: https://crates.io/crates/alloy-rpc-types-beacon
-[`alloy-rpc-types-engine`]: https://crates.io/crates/alloy-rpc-types-engine
-[alloy-rpc-types-engine]: https://crates.io/crates/alloy-rpc-types-engine
-[`alloy-rpc-types-eth`]: https://crates.io/crates/alloy-rpc-types-eth
 [alloy-rpc-types-eth]: https://crates.io/crates/alloy-rpc-types-eth
-[`alloy-rpc-types-trace`]: https://crates.io/crates/alloy-rpc-types-trace
-[alloy-rpc-types-trace]: https://crates.io/crates/alloy-rpc-types-trace
-[`alloy-serde`]: https://crates.io/crates/alloy-serde
-[alloy-serde]: https://crates.io/crates/alloy-serde
-[`alloy-signer`]: https://crates.io/crates/alloy-signer
-[alloy-signer]: https://crates.io/crates/alloy-signer
-[`alloy-signer-aws`]: https://crates.io/crates/alloy-signer-aws
-[alloy-signer-aws]: https://crates.io/crates/alloy-signer-aws
-[`alloy-signer-gcp`]: https://crates.io/crates/alloy-signer-gcp
-[alloy-signer-gcp]: https://crates.io/crates/alloy-signer-gcp
-[`alloy-signer-ledger`]: https://crates.io/crates/alloy-signer-ledger
-[alloy-signer-ledger]: https://crates.io/crates/alloy-signer-ledger
-[`alloy-signer-local`]: https://crates.io/crates/alloy-signer-local
-[alloy-signer-local]: https://crates.io/crates/alloy-signer-local
-[`alloy-signer-trezor`]: https://crates.io/crates/alloy-signer-trezor
-[alloy-signer-trezor]: https://crates.io/crates/alloy-signer-trezor
-[`alloy-signer-wallet`]: https://crates.io/crates/alloy-signer-wallet
-[alloy-signer-wallet]: https://crates.io/crates/alloy-signer-wallet
-[`alloy-transport`]: https://crates.io/crates/alloy-transport
-[alloy-transport]: https://crates.io/crates/alloy-transport
-[`alloy-transport-http`]: https://crates.io/crates/alloy-transport-http
-[alloy-transport-http]: https://crates.io/crates/alloy-transport-http
-[`alloy-transport-ipc`]: https://crates.io/crates/alloy-transport-ipc
-[alloy-transport-ipc]: https://crates.io/crates/alloy-transport-ipc
-[`alloy-transport-ws`]: https://crates.io/crates/alloy-transport-ws
-[alloy-transport-ws]: https://crates.io/crates/alloy-transport-ws
 
 <!-- generated by git-cliff -->
