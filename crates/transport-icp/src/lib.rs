@@ -15,7 +15,7 @@
 )]
 mod evm_rpc;
 
-use alloy_json_rpc::{RequestPacket, ResponsePacket};
+use alloy_json_rpc::{RequestPacket, ResponsePacket, SerializedRequest};
 use alloy_transport::{TransportError, TransportFut};
 use ic_cdk::api::call::CallResult;
 use std::task;
@@ -24,37 +24,36 @@ use tower::Service;
 pub use evm_rpc::*;
 
 const DEFAULT_CALL_CYCLES: u128 = 60_000_000_000;
-const DEFAULT_CALL_MAX_RESPONSE_SIZE: u64 = 10_000;
+
+const MAX_RESPONSE_SIZE_SMALL: u64 = 1_000;
+const MAX_RESPONSE_SIZE_MEDIUM: u64 = 2_000;
+const MAX_RESPONSE_SIZE_UNKNOWN: u64 = 5_000;
 
 /// Configuration details for an ICP transport.
 #[derive(Clone, Debug)]
 #[doc(hidden)]
 pub struct IcpConfig {
     rpc_service: RpcService,
-    call_cycles: u128,
-    max_response_size: u64,
+    call_cycles: Option<u128>,
+    max_response_size: Option<u64>,
 }
 
 impl IcpConfig {
     /// Create a new [`IcpConfig`] with the given [`RpcService`] and default values for call cycles
     /// and max response size.
     pub const fn new(rpc_service: RpcService) -> Self {
-        Self {
-            rpc_service,
-            call_cycles: DEFAULT_CALL_CYCLES,
-            max_response_size: DEFAULT_CALL_MAX_RESPONSE_SIZE,
-        }
+        Self { rpc_service, call_cycles: None, max_response_size: None }
     }
 
     /// Set the call cycles for this config.
     pub const fn set_call_cycles(mut self, call_cycles: u128) -> Self {
-        self.call_cycles = call_cycles;
+        self.call_cycles = Some(call_cycles);
         self
     }
 
     /// Set the max response size for this config.
     pub const fn set_max_response_size(mut self, max_response_size: u64) -> Self {
-        self.max_response_size = max_response_size;
+        self.max_response_size = Some(max_response_size);
         self
     }
 }
@@ -66,8 +65,8 @@ impl IcpConfig {
 #[derive(Clone, Debug)]
 pub struct IcpTransport {
     rpc_service: RpcService,
-    call_cycles: u128,
-    max_response_size: u64,
+    call_cycles: Option<u128>,
+    max_response_size: Option<u64>,
 }
 
 impl IcpTransport {
@@ -92,21 +91,21 @@ impl IcpTransport {
 
     /// Set the call cycles for this transport.
     pub fn set_call_cycles(&mut self, call_cycles: u128) {
-        self.call_cycles = call_cycles;
+        self.call_cycles = Some(call_cycles);
     }
 
     /// Get the call cycles for this transport.
-    pub const fn call_cycles(&self) -> u128 {
+    pub const fn call_cycles(&self) -> Option<u128> {
         self.call_cycles
     }
 
     /// Set the max response size for this transport.
     pub fn set_max_response_size(&mut self, max_response_size: u64) {
-        self.max_response_size = max_response_size;
+        self.max_response_size = Some(max_response_size);
     }
 
     /// Get the max response size for this transport.
-    pub const fn max_response_size(&self) -> u64 {
+    pub const fn max_response_size(&self) -> Option<u64> {
         self.max_response_size
     }
 
@@ -118,11 +117,44 @@ impl IcpTransport {
         false
     }
 
+    fn estimate_max_response_size(&self, request_packet: &RequestPacket) -> u64 {
+        let max_response_size = |serialized_request: &SerializedRequest| -> u64 {
+            match serialized_request.meta().method.as_ref() {
+                "eth_blockNumber" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_getBalance" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_chainId" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_feeHistory" => MAX_RESPONSE_SIZE_MEDIUM,
+                "eth_estimateGas" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_gasPrice" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_getBlockTransactionCountByHash" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_getBlockTransactionCountByNumber" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_getCode" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_getProof" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_getStorageAt" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_getTransactionByBlockHashAndIndex" => MAX_RESPONSE_SIZE_MEDIUM,
+                "eth_getTransactionByHash" => MAX_RESPONSE_SIZE_MEDIUM,
+                "eth_getTransactionCount" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_getUncleCountByBlockHash" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_getUncleCountByBlockNumber" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_maxPriorityFeePerGas" => MAX_RESPONSE_SIZE_SMALL,
+                "eth_protocolVersion" => MAX_RESPONSE_SIZE_SMALL,
+                _ => MAX_RESPONSE_SIZE_UNKNOWN,
+            }
+        };
+
+        match request_packet {
+            RequestPacket::Single(req) => max_response_size(req),
+            RequestPacket::Batch(reqs) => reqs.iter().map(max_response_size).sum(),
+        }
+    }
+
     /// Make an EVM RPC request by calling the `request` method on the EVM RPC canister.
     fn request(&self, request_packet: RequestPacket) -> TransportFut<'static> {
         let rpc_service = self.rpc_service.clone();
-        let max_response_size = self.max_response_size;
-        let call_cycles = self.call_cycles;
+        let max_response_size =
+            self.max_response_size.unwrap_or(self.estimate_max_response_size(&request_packet));
+        let call_cycles = self.call_cycles.unwrap_or(DEFAULT_CALL_CYCLES);
+
         Box::pin(async move {
             let serialized_request = request_packet.serialize().map_err(TransportError::ser_err)?;
 
