@@ -3,7 +3,7 @@
 >
 > See [ICP Notes](#icp-notes) for more information.
 >
-> For demos on how to use the ICP adaption of Alloy, see [ic-alloy-toolkit](https://github.com/kristoferlund/ic-alloy-toolkit)
+> For demos and documentation on how to use the ICP adaption of Alloy, see <https://github.com/ic-alloy>
 
 # Alloy
 
@@ -182,7 +182,7 @@ The ICP signer uses [Threshold ECDSA](https://internetcomputer.org/docs/current/
 To use the ICP enabled fork in your project, add this to `Cargo.toml`:
 
 ```toml
-alloy = { git = "https://github.com/kristoferlund/ic-alloy.git", default-features = false, branch = "icp", features = ["icp"]}
+alloy = { git = "https://github.com/kristoferlund/ic-alloy.git", default-features = false, features = ["icp"]}
 ```
 
 To use the `sol!()` macro, add the following crate features:
