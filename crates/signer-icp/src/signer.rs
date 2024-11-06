@@ -87,9 +87,14 @@ impl Signer for IcpSigner {
 }
 
 impl IcpSigner {
-    /// Instantiate a new signer from an existing `Client` and key ID.
+    /// Instantiate a new signer instance.
     ///
-    /// Retrieves the public key from AWS and calculates the Ethereum address.
+    /// # Arguments
+    ///
+    /// * `derivation_path` - Determines the Ethereum address for the signer.  
+    /// * `ecdsa_key_name` - Name of the ECDSA key to be used for signing. IC uses different
+    /// keynames for different nets. At time of writing, local: `dfx_test_key`, ic: `key_1`.
+    /// * `chain_id` - An optional `ChainId` specifying the blockchain network to interact with.
     pub async fn new(
         derivation_path: Vec<Vec<u8>>,
         ecdsa_key_name: &str,
@@ -117,17 +122,18 @@ impl IcpSigner {
         .unwrap())
     }
 
-    /// ...
+    /// SEC1 encoded ECDSA public key for current canister using the given derivation path and key id.
     pub const fn public_key(&self) -> &Vec<u8> {
         &self.public_key
     }
 
-    /// ...    
+    /// Name of the ECDSA key to be used for signing. IC uses different
+    /// keynames for different nets. At time of writing, local: `dfx_test_key`, ic: `key_1`.
     pub const fn key_id(&self) -> &EcdsaKeyId {
         &self.key_id
     }
 
-    /// ...
+    /// Determines the Ethereum address for the signer.
     pub const fn derivation_path(&self) -> &Vec<Vec<u8>> {
         &self.derivation_path
     }

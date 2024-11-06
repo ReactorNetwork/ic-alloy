@@ -41,7 +41,7 @@ pub async fn address_for_public_key(public_key: &[u8]) -> Result<Address, IcpSig
     Ok(Address::from_slice(&hash[12..32]))
 }
 
-/// ...
+/// Calculate the parity bit for the given signature and public key.
 pub fn y_parity(hash: &B256, signature: &[u8], public_key: &Vec<u8>) -> u64 {
     let verifying_key = VerifyingKey::from_sec1_bytes(public_key.as_slice()).unwrap();
     let signature = Signature::try_from(signature).unwrap();
