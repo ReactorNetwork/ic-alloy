@@ -5,12 +5,11 @@
 >
 > For demos and documentation on how to use the ICP adaption of Alloy, see <https://github.com/ic-alloy>
 
-# Alloy
+# Alloy for the Internet Computer
 
-Alloy connects applications to blockchains.
+`ic-alloy` connects Rust ICP canisters to EVM blockchains.
 
-Alloy is a rewrite of [`ethers-rs`] from the ground up, with exciting new
-features, high performance, and excellent [docs](https://docs.rs/alloy).
+Alloy is a rewrite of [`ethers-rs`] from the ground up, with exciting new features, high performance, and excellent [docs](https://docs.rs/alloy).
 
 We also have a [book](https://alloy.rs/) on all things Alloy and many [examples](https://github.com/alloy-rs/examples) to help you get started.
 
@@ -22,19 +21,25 @@ We also have a [book](https://alloy.rs/) on all things Alloy and many [examples]
 
 ## Installation
 
-Alloy consists of a number of crates that provide a range of functionality essential for interfacing with any Ethereum-based blockchain.
+Alloy consists of a number of crates that provide a range of functionality essential for interfacing with any EVM-based blockchain.
 
-The easiest way to get started is to add the `alloy` crate with the `full` feature flag from the command-line using Cargo:
+The easiest way to get started is to add the `alloy` crate with the `icp` feature flag to your Rust based ICP canister:
 
 ```sh
-cargo add alloy --features full
+cargo add alloy --features icp
 ```
 
 Alternatively, you can add the following to your `Cargo.toml` file:
 
 ```toml
-alloy = { version = "0.3", features = ["full"] }
+alloy = { git = "https://github.com/kristoferlund/ic-alloy.git", tag = "v0.3.5-icp.0", default-features = false, features = ["icp"]}
 ```
+
+To use the `sol!()` macro, add the following crate features:
+
+- `sol-types`
+- `json`
+- `contract`
 
 For a more fine-grained control over the features you wish to include, you can add the individual crates to your `Cargo.toml` file, or use the `alloy` crate with the features you need.
 
@@ -177,19 +182,7 @@ The ICP signer uses [Threshold ECDSA](https://internetcomputer.org/docs/current/
 - Adds the `IcpClient` type that maps to `IcpTransport`
   - `pub type IcpClient = RpcClient<alloy_transport_icp::IcpTransport>;`
 
-### ICP Alloy Installation
 
-To use the ICP enabled fork in your project, add this to `Cargo.toml`:
-
-```toml
-alloy = { git = "https://github.com/kristoferlund/ic-alloy.git", tag = "v0.3.5-icp.0", default-features = false, features = ["icp"]}
-```
-
-To use the `sol!()` macro, add the following crate features:
-
-- `sol-types`
-- `json`
-- `contract`
 
 ### Additional notes for the ICP fork
 
