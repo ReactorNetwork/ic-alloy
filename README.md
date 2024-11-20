@@ -3,7 +3,7 @@
 >
 > See [ICP Notes](#icp-notes) for more information.
 >
-> For demos and documentation on how to use the ICP adaption of Alloy, see <https://github.com/ic-alloy>
+> For demos and documentation on how to use the ICP adaption of Alloy, see [ic-alloy.dev](https://ic-alloy.dev).
 
 # Alloy for the Internet Computer
 
@@ -23,16 +23,11 @@ We also have a [book](https://alloy.rs/) on all things Alloy and many [examples]
 
 Alloy consists of a number of crates that provide a range of functionality essential for interfacing with any EVM-based blockchain.
 
-The easiest way to get started is to add the `alloy` crate with the `icp` feature flag to your Rust based ICP canister:
-
-```sh
-cargo add alloy --features icp
-```
-
-Alternatively, you can add the following to your `Cargo.toml` file:
+To get started, you can add the following to your `Cargo.toml` file:
 
 ```toml
-alloy = { git = "https://github.com/kristoferlund/ic-alloy.git", tag = "v0.3.5-icp.0", default-features = false, features = ["icp"]}
+alloy = { git = "https://github.com/ic-alloy/ic-alloy.git", tag = "v0.3.5-icp.0", default-features = false, features = ["icp"]}
+getrandom = { version = "0.2.15", features = ["custom"] }
 ```
 
 To use the `sol!()` macro, add the following crate features:
@@ -78,11 +73,11 @@ This repository contains the following crates:
   - [`alloy-signer-ledger`] - [Ledger] signer implementation
   - [`alloy-signer-local`] - Local (private key, keystore, mnemonic, YubiHSM) signer implementations
   - [`alloy-signer-trezor`] - [Trezor] signer implementation
-  - [`alloy-signer-icp`] - ICP signer implementation
+  - **[`alloy-signer-icp`] - ICP signer implementation**
 - [`alloy-transport`] - Low-level Ethereum JSON-RPC transport abstraction
   - [`alloy-transport-http`] - HTTP transport implementation
   - [`alloy-transport-ipc`] - IPC transport implementation
-  - [`alloy-transport-icp`] - ICP transport implementation
+  - **[`alloy-transport-icp`] - ICP transport implementation**
   - [`alloy-transport-ws`] - WS transport implementation
 
 [`alloy`]: https://github.com/alloy-rs/alloy/tree/main/crates/alloy
@@ -181,8 +176,6 @@ The ICP signer uses [Threshold ECDSA](https://internetcomputer.org/docs/current/
 - Adds the `IcpPollerBuilder` used for watching for logs, transactions and blocks. The ICP poller relies on [IC timers](https://internetcomputer.org/docs/current/developer-docs/smart-contracts/advanced-features/periodic-tasks/#timers) for continuously listening to events.
 - Adds the `IcpClient` type that maps to `IcpTransport`
   - `pub type IcpClient = RpcClient<alloy_transport_icp::IcpTransport>;`
-
-
 
 ### Additional notes for the ICP fork
 
