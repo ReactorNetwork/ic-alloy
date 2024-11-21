@@ -117,20 +117,21 @@ where
     where
         F: FnMut(Resp) + 'static,
     {
+        let mut poll_count = 0;
+
         let client = match WeakClient::upgrade(&self.client) {
             Some(c) => c,
             None => return Err("Client has been dropped.".into()),
         };
-
-        let mut poll_count = 0;
         let params = self.params.clone();
         let method = self.method.clone();
         let response_handler = Rc::new(RefCell::new(response_handler));
+
         let poll = {
             move || {
                 ic_cdk::spawn({
-                    let params = params.clone();
                     let client = client.clone();
+                    let params = params.clone();
                     let method = method.clone();
                     let response_handler = response_handler.clone();
 
@@ -150,11 +151,8 @@ where
                             Ok(response) => {
                                 poll_count += 1;
 
-                                if let Ok(mut handler) = response_handler.try_borrow_mut() {
-                                    handler(response);
-                                } else {
-                                    ic_cdk::println!("Failed to borrow response_handler mutably");
-                                }
+                                let mut handler = response_handler.try_borrow_mut().unwrap();
+                                handler(response);
 
                                 if poll_count >= self.limit {
                                     // Clear the timer if limit is reached
@@ -179,6 +177,7 @@ where
 
         Ok(id)
     }
+
     /// Stop the poller before the limit is reached.
     pub fn stop(&mut self) {
         if let Some(timer_id) = self.timer_id.take() {
