@@ -117,8 +117,7 @@ where
     where
         F: FnMut(Resp) + 'static,
     {
-        let mut poll_count = 0;
-
+        let poll_count = Rc::new(RefCell::new(0));
         let client = match WeakClient::upgrade(&self.client) {
             Some(c) => c,
             None => return Err("Client has been dropped.".into()),
@@ -130,6 +129,7 @@ where
         let poll = {
             move || {
                 ic_cdk::spawn({
+                    let poll_count = poll_count.clone();
                     let client = client.clone();
                     let params = params.clone();
                     let method = method.clone();
@@ -149,12 +149,13 @@ where
 
                         match result {
                             Ok(response) => {
-                                poll_count += 1;
+                                let mut poll_count = poll_count.borrow_mut();
+                                *poll_count += 1;
 
-                                let mut handler = response_handler.try_borrow_mut().unwrap();
+                                let mut handler = response_handler.borrow_mut();
                                 handler(response);
 
-                                if poll_count >= self.limit {
+                                if *poll_count >= self.limit {
                                     // Clear the timer if limit is reached
                                     if let Some(timer_id) = self.timer_id {
                                         ic_cdk_timers::clear_timer(timer_id);
