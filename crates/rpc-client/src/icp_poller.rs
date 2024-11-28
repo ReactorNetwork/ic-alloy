@@ -5,15 +5,7 @@ use futures::{stream, Stream};
 use ic_cdk_timers::{set_timer_interval, TimerId};
 use serde::Serialize;
 use serde_json::value::RawValue;
-use std::{
-    borrow::Cow,
-    marker::PhantomData,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
-    time::Duration,
-};
+use std::{borrow::Cow, cell::RefCell, marker::PhantomData, rc::Rc, time::Duration};
 
 use crate::WeakClient;
 
@@ -123,30 +115,28 @@ where
     /// Starts the poller with the given response handler.
     pub fn start<F>(mut self, response_handler: F) -> Result<TimerId, String>
     where
-        F: FnMut(Resp) + Send + Sync + 'static,
+        F: FnMut(Resp) + 'static,
     {
+        let poll_count = Rc::new(RefCell::new(0));
         let client = match WeakClient::upgrade(&self.client) {
             Some(c) => c,
             None => return Err("Client has been dropped.".into()),
         };
-
-        let timer_id = Arc::new(Mutex::new(None));
+        let params = self.params.clone();
+        let method = self.method.clone();
+        let response_handler = Rc::new(RefCell::new(response_handler));
 
         let poll = {
-            let timer_id = Arc::clone(&timer_id);
-            let response_handler = Arc::new(Mutex::new(response_handler));
-            let poll_count = Arc::new(AtomicUsize::new(0));
-
             move || {
                 ic_cdk::spawn({
-                    let response_handler = Arc::clone(&response_handler);
-                    let poll_count = Arc::clone(&poll_count);
-                    let timer_id = Arc::clone(&timer_id);
-                    let mut params = ParamsOnce::Typed(self.params.clone());
-                    let client = Arc::clone(&client);
-                    let method = self.method.clone();
+                    let poll_count = poll_count.clone();
+                    let client = client.clone();
+                    let params = params.clone();
+                    let method = method.clone();
+                    let response_handler = response_handler.clone();
 
                     async move {
+                        let mut params = ParamsOnce::Typed(params);
                         let params = match params.get() {
                             Ok(p) => p,
                             Err(e) => {
@@ -159,18 +149,15 @@ where
 
                         match result {
                             Ok(response) => {
-                                let count = poll_count.fetch_add(1, Ordering::SeqCst) + 1;
+                                let mut poll_count = poll_count.borrow_mut();
+                                *poll_count += 1;
 
-                                match response_handler.lock() {
-                                    Ok(mut handler) => handler(response),
-                                    Err(e) => ic_cdk::println!(
-                                        "Failed to acquire lock on response handler: {:?}",
-                                        e
-                                    ),
-                                }
+                                let mut handler = response_handler.borrow_mut();
+                                handler(response);
 
-                                if count >= self.limit {
-                                    if let Some(timer_id) = *timer_id.lock().unwrap() {
+                                if *poll_count >= self.limit {
+                                    // Clear the timer if limit is reached
+                                    if let Some(timer_id) = self.timer_id {
                                         ic_cdk_timers::clear_timer(timer_id);
                                     }
                                 }
@@ -187,8 +174,6 @@ where
 
         // Subsequent polls
         let id = set_timer_interval(self.poll_interval, poll);
-        let mut timer_id_lock = timer_id.lock().unwrap();
-        *timer_id_lock = Some(id);
         self.timer_id = Some(id);
 
         Ok(id)
