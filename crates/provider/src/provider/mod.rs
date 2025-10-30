@@ -9,7 +9,7 @@ pub use sendable::SendableTx;
 
 #[allow(unused_imports)]
 mod r#trait;
-pub use r#trait::{FilterPollerBuilder, Provider};
+pub use r#trait::Provider;
 
 mod wallet;
 pub use wallet::WalletProvider;

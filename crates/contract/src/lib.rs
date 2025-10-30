@@ -16,7 +16,7 @@ mod error;
 pub use error::*;
 
 mod event;
-pub use event::{Event, EventPoller};
+pub use event::Event;
 
 #[cfg(feature = "pubsub")]
 pub use event::subscription::EventSubscription;

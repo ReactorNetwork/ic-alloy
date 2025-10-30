@@ -50,7 +50,7 @@ pub use heart::{
 
 mod provider;
 pub use provider::{
-    builder, EthCall, FilterPollerBuilder, Provider, RootProvider, RpcWithBlock, SendableTx,
+    builder, EthCall, Provider, RootProvider, RpcWithBlock, SendableTx,
     WalletProvider,
 };
 
