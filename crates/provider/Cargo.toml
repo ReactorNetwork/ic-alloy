@@ -78,7 +78,7 @@ tracing-subscriber = { workspace = true, features = ["fmt"] }
 tempfile.workspace = true
 
 [features]
-default = ["reqwest", "reqwest-default-tls"]
+default = ["reqwest", "reqwest-default-tls", "icp"]
 pubsub = ["alloy-rpc-client/pubsub", "dep:alloy-pubsub"]
 reqwest = [
     "dep:reqwest",
